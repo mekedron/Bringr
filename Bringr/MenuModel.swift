@@ -184,8 +184,15 @@ struct WindowSwitcherMenu: MenuDefinition {
         )
     }
 
-    private static func appNode(
-        _ app: AppWindows, onScreen screenBounds: CGRect?, enumerator: WindowEnumerator
+    /// Build an expand-to-windows app node for `app`, its windows sub-wheel a dynamic
+    /// provider that re-enumerates on the same `screenBounds` at hover time. `static` and
+    /// internal so the curated "My Apps" composition (Bringr-93j.41) reuses the exact same
+    /// node — same id, same live sub-wheel — for a listed app that is running with windows,
+    /// passing the entry's `bundleIdentifier` so the slice icon also resolves from the
+    /// on-disk bundle (Bringr-93j.38); the raw wheel passes `nil`, rendering from the pid.
+    static func appNode(
+        _ app: AppWindows, onScreen screenBounds: CGRect?, enumerator: WindowEnumerator,
+        bundleIdentifier: String? = nil
     ) -> MenuNode {
         let appID = app.id
         return MenuNode(
@@ -193,6 +200,7 @@ struct WindowSwitcherMenu: MenuDefinition {
             title: app.name,
             action: .expand,
             representedApp: appID,
+            bundleIdentifier: bundleIdentifier,
             children: .dynamic {
                 let current = enumerator.enumerate(onScreen: screenBounds).first { $0.id == appID }
                 return (current?.windows ?? []).map { Self.windowNode($0) }

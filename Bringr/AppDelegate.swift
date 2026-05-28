@@ -45,7 +45,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     /// switcher answers both activation triggers.
     private func prewarmRadialMenu() {
         let enumerator = WindowEnumerator()
-        let switcher = WindowSwitcherMenu(enumerator: enumerator)
+        // The curated "My Apps" wheel (Bringr-93j.41); it falls through to the full
+        // all-running-apps wheel when the user has curated nothing.
+        let switcher = MyAppsMenu(enumerator: enumerator)
         let registry = MenuRegistry()
         registry.register(switcher, for: .mouseChord)
         registry.register(switcher, for: .modifierHold)
