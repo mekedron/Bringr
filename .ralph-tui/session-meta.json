@@ -1,0 +1,29 @@
+{
+  "id": "bf5be85f-d1fa-4dc4-8304-f09229dbce6c",
+  "status": "running",
+  "startedAt": "2026-05-28T11:08:20.435Z",
+  "updatedAt": "2026-05-28T11:08:20.435Z",
+  "agentPlugin": "claude",
+  "trackerPlugin": "beads-bv",
+  "epicId": "Bringr-93j",
+  "epicIds": [
+    "Bringr-93j"
+  ],
+  "executionScopes": [
+    {
+      "id": "Bringr-93j",
+      "title": "Radial Window Switcher (Bringr v1)",
+      "type": "epic",
+      "description": "Bringr's single job in v1 is to switch fast between multiple windows of the same app without touching the keyboard. The user summons a radial (pie) menu at the cursor; it shows the apps that currently have open windows; hovering an app reveals a sub-wheel of that app's windows; hovering a window isolates it on screen for visual confirmation; clicking brings it forward and focuses it. The whole flow stays in the wheel — no Cmd-Tab, Mission Control, or Dock guessing.\n\nThis document covers v1 only. URLs, files, folders, custom commands, real window previews, user-created menus, and animations are explicitly future work, but the architecture must not foreclose them.\n\nSource PRD: ./tasks/prd-radial-window-switcher-bringr-v1.md\n",
+      "metadata": {
+        "dependencyCount": 0,
+        "dependentCount": 0
+      }
+    }
+  ],
+  "currentIteration": 0,
+  "maxIterations": 0,
+  "totalTasks": 0,
+  "tasksCompleted": 0,
+  "cwd": "/Users/nikita/Projects/Bringr"
+}

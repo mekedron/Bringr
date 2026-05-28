@@ -1,0 +1,31 @@
+# SwiftLint configuration for Bringr.
+# Quality gate: `swiftlint lint --strict` must report zero violations.
+
+included:
+  - Bringr
+  - BringrTests
+
+excluded:
+  - build
+  - .build
+  - DerivedData
+
+opt_in_rules:
+  - empty_count
+  - empty_string
+  - explicit_init
+  - first_where
+  - last_where
+  - toggle_bool
+
+line_length:
+  warning: 120
+  error: 200
+
+identifier_name:
+  min_length:
+    warning: 2
+  excluded:
+    - id
+    - x
+    - y

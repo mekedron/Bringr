@@ -1,0 +1,129 @@
+{
+  "version": 1,
+  "sessionId": "bf5be85f-d1fa-4dc4-8304-f09229dbce6c",
+  "status": "running",
+  "startedAt": "2026-05-28T11:08:26.939Z",
+  "updatedAt": "2026-05-28T11:16:41.391Z",
+  "currentIteration": 0,
+  "maxIterations": 0,
+  "tasksCompleted": 0,
+  "isPaused": false,
+  "agentPlugin": "claude",
+  "trackerState": {
+    "plugin": "beads-bv",
+    "epicId": "Bringr-93j",
+    "epicIds": [
+      "Bringr-93j"
+    ],
+    "executionScopes": [
+      {
+        "id": "Bringr-93j",
+        "title": "Radial Window Switcher (Bringr v1)",
+        "type": "epic",
+        "description": "Bringr's single job in v1 is to switch fast between multiple windows of the same app without touching the keyboard. The user summons a radial (pie) menu at the cursor; it shows the apps that currently have open windows; hovering an app reveals a sub-wheel of that app's windows; hovering a window isolates it on screen for visual confirmation; clicking brings it forward and focuses it. The whole flow stays in the wheel — no Cmd-Tab, Mission Control, or Dock guessing.\n\nThis document covers v1 only. URLs, files, folders, custom commands, real window previews, user-created menus, and animations are explicitly future work, but the architecture must not foreclose them.\n\nSource PRD: ./tasks/prd-radial-window-switcher-bringr-v1.md\n",
+        "metadata": {
+          "dependencyCount": 0,
+          "dependentCount": 0
+        }
+      }
+    ],
+    "totalTasks": 15,
+    "tasks": [
+      {
+        "id": "Bringr-93j.1",
+        "title": "US-001: Stand up lint and test tooling",
+        "status": "open",
+        "completedInSession": false
+      },
+      {
+        "id": "Bringr-93j.2",
+        "title": "US-002: Accessibility permission bootstrap",
+        "status": "open",
+        "completedInSession": false
+      },
+      {
+        "id": "Bringr-93j.3",
+        "title": "US-003: Window enumeration service",
+        "status": "open",
+        "completedInSession": false
+      },
+      {
+        "id": "Bringr-93j.4",
+        "title": "US-004: Window control primitives",
+        "status": "open",
+        "completedInSession": false
+      },
+      {
+        "id": "Bringr-93j.5",
+        "title": "US-005: Nestable, non-singleton menu model",
+        "status": "open",
+        "completedInSession": false
+      },
+      {
+        "id": "Bringr-93j.6",
+        "title": "US-006: Overlay window and radial layout",
+        "status": "open",
+        "completedInSession": false
+      },
+      {
+        "id": "Bringr-93j.7",
+        "title": "US-007: Activation — simultaneous left+right mouse click",
+        "status": "open",
+        "completedInSession": false
+      },
+      {
+        "id": "Bringr-93j.8",
+        "title": "US-008: Activation — three-finger trackpad press",
+        "status": "open",
+        "completedInSession": false
+      },
+      {
+        "id": "Bringr-93j.9",
+        "title": "US-009: Interaction modes — hold-to-select and click-to-stay",
+        "status": "open",
+        "completedInSession": false
+      },
+      {
+        "id": "Bringr-93j.10",
+        "title": "US-010: App-hover — isolate app and open window sub-wheel",
+        "status": "open",
+        "completedInSession": false
+      },
+      {
+        "id": "Bringr-93j.11",
+        "title": "US-011: Window-hover — isolate a single window",
+        "status": "open",
+        "completedInSession": false
+      },
+      {
+        "id": "Bringr-93j.12",
+        "title": "US-012: Select and commit — focus and remember",
+        "status": "open",
+        "completedInSession": false
+      },
+      {
+        "id": "Bringr-93j.13",
+        "title": "US-013: Reveal-strategy setting",
+        "status": "open",
+        "completedInSession": false
+      },
+      {
+        "id": "Bringr-93j.14",
+        "title": "US-014: Appearance customization",
+        "status": "open",
+        "completedInSession": false
+      },
+      {
+        "id": "Bringr-93j.15",
+        "title": "US-015: Cancel and guaranteed state restoration",
+        "status": "open",
+        "completedInSession": false
+      }
+    ]
+  },
+  "iterations": [],
+  "skippedTaskIds": [],
+  "cwd": "/Users/nikita/Projects/Bringr",
+  "activeTaskIds": [],
+  "subagentPanelVisible": false
+}
