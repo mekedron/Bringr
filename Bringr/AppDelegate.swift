@@ -9,6 +9,8 @@ import Combine
 @MainActor
 final class AppDelegate: NSObject, NSApplicationDelegate {
     let permissions = PermissionsManager()
+    /// Backs the "Launch at login" toggle in Preferences (Bringr-toj).
+    let launchAtLogin = LaunchAtLoginManager()
     /// The pre-warmed radial menu, summoned by the menu-bar item (and, later, the
     /// global activation triggers in US-007/US-008). `nil` under XCTest, where the
     /// launch bootstrap is skipped.

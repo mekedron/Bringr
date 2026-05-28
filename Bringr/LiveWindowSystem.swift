@@ -13,6 +13,12 @@ private func axUIElementGetWindow(
     _ windowID: UnsafeMutablePointer<CGWindowID>
 ) -> AXError
 
+/// Process Manager fallback used by AutoRaise's old activation path. Swift marks
+/// those Carbon calls unavailable, so a tiny Objective-C shim links them for the
+/// live app-switch path.
+@_silgen_name("BringrSetFrontProcess")
+private func bringrSetFrontProcess(_ pid: pid_t) -> Int32
+
 /// Live `WindowControlling` backed by `NSRunningApplication` (app visibility and
 /// activation) and the Accessibility API (per-window state and control).
 ///
@@ -70,7 +76,10 @@ final class LiveWindowSystem: WindowControlling {
             log.error("NSRunningApplication lookup failed for pid \(app.pid)")
             return
         }
-        if running.activate(options: [.activateAllWindows]) != true {
+        if bringrSetFrontProcess(app.pid) == 0 {
+            log.error("SetFrontProcessWithOptions failed for pid \(app.pid)")
+        }
+        if running.activate(options: []) != true {
             log.error("NSRunningApplication.activate failed for pid \(app.pid)")
         }
         setBool(appElement, kAXFrontmostAttribute, true, app: app)

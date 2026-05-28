@@ -4,6 +4,7 @@ import SwiftUI
 /// to grant it, the interaction mode (US-009), and the wheel appearance (US-014).
 struct PreferencesView: View {
     @EnvironmentObject private var permissions: PermissionsManager
+    @EnvironmentObject private var launchAtLogin: LaunchAtLoginManager
     /// The persisted interaction mode. The same key is read by `RadialMenuController`
     /// (via `InteractionMode.current`), so a change here takes effect on the next summon.
     @AppStorage(InteractionMode.defaultsKey) private var interactionModeRaw = InteractionMode.default.rawValue
@@ -26,6 +27,14 @@ struct PreferencesView: View {
 
             Divider()
 
+            Text("Startup")
+                .font(.title2)
+                .bold()
+
+            startupSection
+
+            Divider()
+
             Text("Interaction")
                 .font(.title2)
                 .bold()
@@ -43,7 +52,24 @@ struct PreferencesView: View {
             Spacer(minLength: 0)
         }
         .padding(28)
-        .frame(width: 460, height: 560)
+        .frame(width: 460, height: 620)
+    }
+
+    private var startupSection: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Toggle(
+                "Launch Bringr at login",
+                isOn: Binding(
+                    get: { launchAtLogin.isEnabled },
+                    set: { launchAtLogin.setEnabled($0) }
+                )
+            )
+
+            Text("Bringr starts automatically when you log in and runs in the menu bar.")
+                .font(.callout)
+                .foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
+        }
     }
 
     private var appearanceSection: some View {
@@ -131,4 +157,5 @@ struct PreferencesView: View {
 #Preview {
     PreferencesView()
         .environmentObject(PermissionsManager(probe: { false }))
+        .environmentObject(LaunchAtLoginManager(probe: { false }))
 }

@@ -317,7 +317,7 @@ final class WindowControlTests: XCTestCase {
         XCTAssertLessThan(
             operations.firstIndex(of: .raise(target)) ?? -1,
             operations.firstIndex(of: .activate(appA)) ?? -1,
-            "the selected window must be AX-raised before app activation so the old front app cannot keep the global front layer"
+            "selected window must be AX-raised before app activation"
         )
         XCTAssertLessThan(
             operations.firstIndex(of: .raise(frontSibling)) ?? -1,

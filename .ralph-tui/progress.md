@@ -36,6 +36,14 @@ after each iteration and it's included in prompts for context.
   `PBXBuildFile`, a `PBXFileReference`, a child in the target's `PBXGroup`, and an
   entry in its `PBXSourcesBuildPhase`. IDs follow `1A00…00XX`; pick the next free
   pair above the current max (grep the IDs). `pbxproj` uses tab indentation.
+- **When a bead says "add SPM package X", prefer wrapping the Apple framework it
+  thinly wraps.** This is an `.xcodeproj` with no SPM dependencies and no GUI an agent
+  can drive; adding a remote package also makes the build network-dependent (the build
+  gate fails offline). For thin wrappers (e.g. LaunchAtLogin-Modern → `SMAppService`),
+  call the system API directly inside an injectable `ObservableObject` (the
+  `PermissionsManager` shape: `@Published private(set)` state + injected
+  probe/action closures, `nonisolated static` live impls) so the logic is unit-tested
+  without touching real system state. Don't credit a package you didn't bundle.
 
 ---
 
@@ -114,5 +122,58 @@ Hover feedback died after switching the interaction mode to click-to-stay.
     "Executed 0 tests", which is the tell. See the new pbxproj pattern up top.
   - Quality gates: build SUCCEEDED, `swiftlint lint --strict` 0 violations, all 177
     tests pass (was 173 before the 4 new ones).
+---
+
+## 2026-05-28 - Bringr-toj
+
+Added a "Launch at login" option to Preferences.
+
+- **What:** New `LaunchAtLoginManager` (an `ObservableObject` mirroring
+  `PermissionsManager`'s injected-system-call pattern) backed by
+  `SMAppService.mainApp` — the same modern API the LaunchAtLogin-Modern SPM
+  package wraps, no legacy helper bundle. `setEnabled(_:)` registers/unregisters
+  and then republishes the *actual* system status (so a failed call can't make the
+  toggle lie); `refresh()` re-reads status to catch approvals/removals made in
+  System Settings. A "Startup" section with the toggle was added to
+  `PreferencesView`, the manager is owned by `AppDelegate` and injected as an
+  environment object on the Preferences window.
+- **Decision — direct SMAppService instead of the SPM package:** the bead suggested
+  adding LaunchAtLogin-Modern via Xcode's "Add Package Dependencies" GUI. Done
+  directly against `SMAppService` instead because (a) an agent can't drive the Xcode
+  package UI, (b) it would be the project's *only* SPM dependency, making the build
+  network-dependent (the build gate would fail offline), and (c) the package is a
+  ~30-line `SMAppService` wrapper. User-facing behavior and the acceptance criteria
+  (which name SMAppService explicitly) are identical. Left `AboutView` unchanged — no
+  third-party package is bundled, so there's nothing to credit.
+- **Files changed:**
+  - `Bringr/LaunchAtLogin.swift` (new) — `LaunchAtLoginManager`.
+  - `BringrTests/LaunchAtLoginTests.swift` (new) — 7 tests over the manager logic
+    using a `registered`-backed fake probe/register/unregister trio.
+  - `Bringr/PreferencesView.swift` — "Startup" section + toggle, `@EnvironmentObject`,
+    `#Preview` updated, window height 560 → 620.
+  - `Bringr/AppDelegate.swift` — owns `launchAtLogin`.
+  - `Bringr/BringrApp.swift` — injects it into the Preferences window.
+  - `Bringr.xcodeproj/project.pbxproj` — registered both new files (IDs `…0067`/`…0068`
+    for the source, `…0069`/`…006A` for the test).
+- **Learnings:**
+  - `SMAppService.mainApp` works for a non-sandboxed `LSUIElement` app with no
+    entitlement; `import ServiceManagement` auto-links the framework (no Frameworks
+    build-phase entry needed). Registration persistence across reboot is OS behavior
+    and can't be exercised in the automated env; the manager logic is unit-tested and
+    app build + launch verified (no crash). Toggle-click → real registration needs
+    manual verification (and the ad-hoc dev signature can make `register()` throw on
+    *this* machine specifically — handled gracefully).
+  - **Concurrent-iteration pbxproj hazard:** another iteration added
+    `WindowActivationShim.m` to the same pbxproj mid-task and grabbed the exact next
+    free ID pair (`…0067`/`…0068`) I'd picked, producing duplicate object IDs and a
+    "project is damaged / `-[PBXFileReference buildPhase]: unrecognized selector`"
+    failure. A formatter then auto-renumbered the shim to `…006B`/`…006C`, clearing it.
+    Tell: re-grep ALL pbxproj IDs *immediately before* editing, and after a build
+    failure check `grep '… = {isa' | uniq -d` for duplicate *definitions* (plain
+    `uniq -d` over every ID match is useless — each ID legitimately recurs).
+  - Quality gates: build SUCCEEDED, `swiftlint lint --strict` 0 violations, all 184
+    tests pass (was 177; +7 new). Confirmed the new class executes via
+    `-only-testing:BringrTests/LaunchAtLoginTests` (7 run) to dodge the silent
+    "0 tests" trap.
 ---
 

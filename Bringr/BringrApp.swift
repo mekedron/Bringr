@@ -21,6 +21,7 @@ struct BringrApp: App {
         Window("Bringr Preferences", id: "preferences") {
             PreferencesView()
                 .environmentObject(appDelegate.permissions)
+                .environmentObject(appDelegate.launchAtLogin)
         }
         .windowResizability(.contentSize)
         .defaultPosition(.center)
