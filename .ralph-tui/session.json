@@ -3,10 +3,10 @@
   "sessionId": "bf5be85f-d1fa-4dc4-8304-f09229dbce6c",
   "status": "running",
   "startedAt": "2026-05-28T11:08:26.939Z",
-  "updatedAt": "2026-05-28T11:38:50.310Z",
-  "currentIteration": 2,
+  "updatedAt": "2026-05-28T11:47:52.930Z",
+  "currentIteration": 3,
   "maxIterations": 0,
-  "tasksCompleted": 2,
+  "tasksCompleted": 3,
   "isPaused": false,
   "agentPlugin": "claude",
   "trackerState": {
@@ -50,8 +50,8 @@
       {
         "id": "Bringr-93j.4",
         "title": "US-004: Window control primitives",
-        "status": "open",
-        "completedInSession": false
+        "status": "completed",
+        "completedInSession": true
       },
       {
         "id": "Bringr-93j.5",
@@ -141,6 +141,16 @@
       "durationMs": 517756,
       "startedAt": "2026-05-28T11:16:50.321Z",
       "endedAt": "2026-05-28T11:25:28.077Z"
+    },
+    {
+      "iteration": 3,
+      "status": "completed",
+      "taskId": "Bringr-93j.4",
+      "taskTitle": "US-004: Window control primitives",
+      "taskCompleted": true,
+      "durationMs": 791831,
+      "startedAt": "2026-05-28T11:25:37.687Z",
+      "endedAt": "2026-05-28T11:38:49.518Z"
     }
   ],
   "skippedTaskIds": [],
