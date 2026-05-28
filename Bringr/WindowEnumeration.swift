@@ -48,12 +48,17 @@ struct RawWindow: Equatable, Sendable {
     /// AX-backed are phantom helper surfaces (Chrome/Ghostty keep them) you can't focus, so
     /// they're dropped. Defaults true (on-screen windows are real), so fixtures needn't set it.
     let isAXBacked: Bool
+    /// Whether the owning app is an ordinary Dock app (`activationPolicy == .regular`); the
+    /// switcher drops background/agent/menu-bar-only apps so broadening to all Spaces/screens
+    /// no longer floods the ring with them (Bringr-93j.51). Defaults true, so the narrow query
+    /// and existing fixtures need not set it.
+    let isDockApp: Bool
 
     init(
         windowNumber: Int, ownerPID: pid_t, ownerName: String, title: String,
         layer: Int, alpha: Double, bounds: CGRect,
         isOnscreen: Bool = true, isMinimized: Bool = false, isHidden: Bool = false,
-        isAXBacked: Bool = true
+        isAXBacked: Bool = true, isDockApp: Bool = true
     ) {
         self.windowNumber = windowNumber
         self.ownerPID = ownerPID
@@ -66,16 +71,18 @@ struct RawWindow: Equatable, Sendable {
         self.isMinimized = isMinimized
         self.isHidden = isHidden
         self.isAXBacked = isAXBacked
+        self.isDockApp = isDockApp
     }
 
     /// A copy carrying the per-window minimized/hidden/AX-backed classification the live
-    /// source resolves after the raw list is parsed (Bringr-93j.50 / Bringr-93j.52).
+    /// source resolves after the raw list is parsed (Bringr-93j.50 / Bringr-93j.52). The
+    /// Dock-app stamp is preserved from `self` (set when the record was first built).
     func classified(isMinimized: Bool, isHidden: Bool, isAXBacked: Bool) -> RawWindow {
         RawWindow(
             windowNumber: windowNumber, ownerPID: ownerPID, ownerName: ownerName, title: title,
             layer: layer, alpha: alpha, bounds: bounds,
             isOnscreen: isOnscreen, isMinimized: isMinimized, isHidden: isHidden,
-            isAXBacked: isAXBacked
+            isAXBacked: isAXBacked, isDockApp: isDockApp
         )
     }
 }
@@ -190,17 +197,21 @@ final class WindowEnumerator {
         return result
     }
 
-    /// Whether to keep a (normal) window given the broadening flags (Bringr-93j.50). An
-    /// on-screen window is always kept (the default set). An off-screen record with no AX
-    /// window is a phantom helper surface Bringr can't focus, so it is dropped regardless of
-    /// flags (Bringr-93j.52). The rest are classified by precedence — a hidden app's windows
-    /// count as hidden even if also minimized, since `includeHidden` is meant to bring a whole
-    /// hidden app back — then kept only if the matching flag is on; anything left (off-Space)
-    /// rides on `allSpaces`. With every flag off the source returned only on-screen windows
-    /// (all AX-backed by default), so this keeps them all unchanged.
+    /// Whether to keep a (normal) window given the broadening flags (Bringr-93j.50). A window
+    /// whose owning app isn't an ordinary Dock app is always dropped — the switcher shows only
+    /// Dock apps, on the narrow path too, so "all screens" alone stops surfacing background /
+    /// agent / menu-bar apps (Bringr-93j.51). Otherwise an on-screen window is always kept (the
+    /// default set). An off-screen record with no AX window is a phantom helper surface Bringr
+    /// can't focus, so it is dropped regardless of flags (Bringr-93j.52). The rest are
+    /// classified by precedence — a hidden app's windows count as hidden even if also minimized,
+    /// since `includeHidden` is meant to bring a whole hidden app back — then kept only if the
+    /// matching flag is on; anything left (off-Space) rides on `allSpaces`. With every flag off
+    /// the source returned only on-screen windows (Dock-app / AX-backed by default), so this
+    /// keeps them all unchanged.
     private func shouldCollect(
         _ window: RawWindow, allSpaces: Bool, includeMinimized: Bool, includeHidden: Bool
     ) -> Bool {
+        if !window.isDockApp { return false }
         if window.isOnscreen { return true }
         if !window.isAXBacked { return false }
         if window.isHidden { return includeHidden }
@@ -297,82 +308,6 @@ final class WindowEnumerator {
     private func title(for window: RawWindow, index: Int) -> String {
         let trimmed = window.title.trimmingCharacters(in: .whitespacesAndNewlines)
         return trimmed.isEmpty ? "Window \(index + 1)" : trimmed
-    }
-}
-
-/// Live `WindowEnumerationSource` backed by CoreGraphics' on-screen window list.
-/// Uses only public API: each record's `windowNumber` is the stable
-/// `kCGWindowNumber`. (Titles via `kCGWindowName` require Screen Recording and
-/// are normally empty under Accessibility-only permission — see `title(for:)`.)
-@MainActor
-final class CGWindowSource: WindowEnumerationSource {
-    let selfPID = ProcessInfo.processInfo.processIdentifier
-    /// The live AX / `NSRunningApplication` wrapper, reused only to read per-window minimized
-    /// state and per-app hidden state when classifying a broadened list (Bringr-93j.50). This
-    /// is read-only here; window control mutates its own separate instance.
-    private let stateProbe = LiveWindowSystem()
-
-    func rawWindows(includingOffscreen: Bool) -> [RawWindow] {
-        // `.optionOnScreenOnly` limits the list to windows on the current Space that aren't
-        // minimized or hidden; dropping it (an all-windows query) is the only public way to
-        // reach all three groups (Bringr-93j.48 / Bringr-93j.50). The narrow form is left
-        // exactly as before, so the unbroadened default is unchanged.
-        let options: CGWindowListOption = includingOffscreen
-            ? [.excludeDesktopElements]
-            : [.optionOnScreenOnly, .excludeDesktopElements]
-        guard let infoList = CGWindowListCopyWindowInfo(options, kCGNullWindowID)
-            as? [[String: Any]] else { return [] }
-        let raws = infoList.compactMap { rawWindow(from: $0, assumeOnscreen: !includingOffscreen) }
-        return includingOffscreen ? classify(raws) : raws
-    }
-
-    /// Stamp each broadened record with its minimized/hidden/AX-backed state so the keep-rule
-    /// can split off-Space from minimized from hidden and drop phantoms (Bringr-93j.52): each
-    /// app's AX windows yield the minimized set and the set of controllable window numbers — a
-    /// broadened record whose number is absent from the latter is a phantom. Hidden via `isHidden`.
-    private func classify(_ raws: [RawWindow]) -> [RawWindow] {
-        var minimizedNumbers: Set<Int> = []
-        var hiddenPIDs: Set<pid_t> = []
-        var axNumbers: Set<Int> = []
-        for pid in Set(raws.map(\.ownerPID)) {
-            let app = AppID(pid: pid)
-            if stateProbe.isHidden(app) { hiddenPIDs.insert(pid) }
-            for window in stateProbe.windows(of: app) {
-                axNumbers.insert(window.token)
-                if stateProbe.isMinimized(window) { minimizedNumbers.insert(window.token) }
-            }
-        }
-        return raws.map {
-            $0.classified(
-                isMinimized: minimizedNumbers.contains($0.windowNumber),
-                isHidden: hiddenPIDs.contains($0.ownerPID),
-                isAXBacked: axNumbers.contains($0.windowNumber)
-            )
-        }
-    }
-
-    private func rawWindow(from info: [String: Any], assumeOnscreen: Bool) -> RawWindow? {
-        guard let windowNumber = (info[kCGWindowNumber as String] as? NSNumber)?.intValue,
-              let ownerPID = (info[kCGWindowOwnerPID as String] as? NSNumber)?.int32Value,
-              let layer = (info[kCGWindowLayer as String] as? NSNumber)?.intValue,
-              let boundsDict = info[kCGWindowBounds as String] as? NSDictionary,
-              let bounds = CGRect(dictionaryRepresentation: boundsDict as CFDictionary)
-        else { return nil }
-
-        // The narrow query returns only on-screen windows; the broadened one mixes in
-        // off-screen records, so read the system flag there (absent → off-screen).
-        let isOnscreen = assumeOnscreen
-            || ((info[kCGWindowIsOnscreen as String] as? NSNumber)?.boolValue ?? false)
-        return RawWindow(
-            windowNumber: windowNumber,
-            ownerPID: ownerPID,
-            ownerName: (info[kCGWindowOwnerName as String] as? String) ?? "",
-            title: (info[kCGWindowName as String] as? String) ?? "",
-            layer: layer,
-            alpha: (info[kCGWindowAlpha as String] as? NSNumber)?.doubleValue ?? 1,
-            bounds: bounds,
-            isOnscreen: isOnscreen
-        )
     }
 }
 

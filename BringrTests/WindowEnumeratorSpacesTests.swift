@@ -216,15 +216,55 @@ final class WindowEnumeratorVisibilityTests: XCTestCase {
     }
 }
 
-/// Shared fixture builder for both classes in this file. `isOnscreen` defaults to a plain
-/// on-screen window; off-Space / minimized / hidden fixtures set the relevant flags so the
-/// keep-rule can be exercised without the live `CGWindowList`.
+/// The Dock-app filter (Bringr-93j.51): the wheel shows only ordinary Dock apps, so broadening
+/// collection to all Spaces/screens no longer floods the ring with the background / agent /
+/// menu-bar apps the wider query surfaces. A sibling class sharing the file-scoped `raw` helper.
+@MainActor
+final class WindowEnumeratorDockAppTests: XCTestCase {
+    private let selfPID: pid_t = 1000
+
+    func testNonDockAppDroppedEvenWhenOnScreen() {
+        // A background / menu-bar app (no Dock tile) is excluded even with an on-screen window
+        // and no broadening — the filter runs on the narrow path too, so "all screens" alone
+        // (which doesn't widen the query) is filtered just the same.
+        let source = FakeWindowEnumerationSource(selfPID: selfPID, windows: [
+            raw(number: 1, pid: 10, name: "Chrome"),
+            raw(number: 2, pid: 20, name: "MenuBarHelper", isDockApp: false)
+        ])
+
+        XCTAssertEqual(WindowEnumerator(source: source).enumerate().map(\.name), ["Chrome"])
+    }
+
+    func testNonDockAppDroppedWhenBroadeningAcrossSpaces() {
+        // The motivating case: spanning every Space surfaces a real Dock app's off-Space window
+        // (kept) plus a background agent's window (dropped), so only the Dock app rides along.
+        let source = FakeWindowEnumerationSource(
+            selfPID: selfPID,
+            windows: [raw(number: 1, pid: 10, name: "Chrome")],
+            offscreenWindows: [
+                raw(number: 1, pid: 10, name: "Chrome"),
+                raw(number: 2, pid: 20, name: "Mail", isOnscreen: false),
+                raw(number: 3, pid: 30, name: "Agent", isOnscreen: false, isDockApp: false)
+            ]
+        )
+
+        XCTAssertEqual(
+            WindowEnumerator(source: source).enumerate(allSpaces: true).map(\.name),
+            ["Chrome", "Mail"]
+        )
+    }
+}
+
+/// Shared fixture builder for the classes in this file. `isOnscreen` defaults to a plain
+/// on-screen window and `isDockApp` to an ordinary Dock app; off-Space / minimized / hidden /
+/// background-app fixtures set the relevant flags so the keep-rule can be exercised without the
+/// live `CGWindowList`.
 @MainActor
 private func raw(
     number: Int, pid: pid_t, name: String,
     x: CGFloat = 0, y: CGFloat = 0, width: CGFloat = 800, height: CGFloat = 600,
     isOnscreen: Bool = true, isMinimized: Bool = false, isHidden: Bool = false,
-    isAXBacked: Bool = true
+    isAXBacked: Bool = true, isDockApp: Bool = true
 ) -> RawWindow {
     RawWindow(
         windowNumber: number,
@@ -237,6 +277,7 @@ private func raw(
         isOnscreen: isOnscreen,
         isMinimized: isMinimized,
         isHidden: isHidden,
-        isAXBacked: isAXBacked
+        isAXBacked: isAXBacked,
+        isDockApp: isDockApp
     )
 }
