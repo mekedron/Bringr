@@ -52,7 +52,9 @@ final class RadialNavigator {
 
     private let windowControl: WindowController
     private let store: LastSelectionStore
-    private let baseGeometry: RadialGeometry
+    /// Base ring size for the apps ring. Re-set per summon from the persisted
+    /// appearance (US-014), so a Preferences size change applies on the next open.
+    private var baseGeometry: RadialGeometry
     private let maxDepth: Int
 
     init(
@@ -79,9 +81,19 @@ final class RadialNavigator {
         return RadialGeometry(innerRadius: inner, outerRadius: inner + thickness)
     }
 
-    /// Side length of the square overlay needed to fit every concentric ring at
-    /// full depth — the pre-warm size, fixed so a summon never resizes the window.
+    /// Side length of the square overlay needed to fit every concentric ring at the
+    /// current base size and full depth. The controller resizes the pre-warmed
+    /// window to this on summon when the appearance changed (US-014) — a resize of
+    /// the reused window, not an allocation, so the hot path stays cheap (FR-14).
     var overallDiameter: CGFloat { 2 * ringGeometry(forLevel: maxDepth - 1).outerRadius }
+
+    /// Set the apps-ring base geometry for the next summon (US-014). Read fresh from
+    /// the persisted appearance just before `open`, so a Preferences size change
+    /// takes effect without a relaunch. Because rendering and hit-testing both derive
+    /// from this one geometry, resizing can never desync them (AC3).
+    func setBaseGeometry(_ geometry: RadialGeometry) {
+        baseGeometry = geometry
+    }
 
     // MARK: - Lifecycle
 

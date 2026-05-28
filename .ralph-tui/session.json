@@ -3,10 +3,10 @@
   "sessionId": "599ac84a-aff5-492c-bdc6-1f8f1c332303",
   "status": "running",
   "startedAt": "2026-05-28T14:17:40.578Z",
-  "updatedAt": "2026-05-28T14:43:06.648Z",
-  "currentIteration": 1,
+  "updatedAt": "2026-05-28T15:00:10.894Z",
+  "currentIteration": 2,
   "maxIterations": 10,
-  "tasksCompleted": 1,
+  "tasksCompleted": 2,
   "isPaused": false,
   "agentPlugin": "claude",
   "trackerState": {
@@ -122,8 +122,8 @@
       {
         "id": "Bringr-93j.15",
         "title": "US-015: Cancel and guaranteed state restoration",
-        "status": "open",
-        "completedInSession": false
+        "status": "completed",
+        "completedInSession": true
       },
       {
         "id": "Bringr-93j.16",
@@ -143,6 +143,16 @@
       "durationMs": 600440,
       "startedAt": "2026-05-28T14:17:54.212Z",
       "endedAt": "2026-05-28T14:27:54.652Z"
+    },
+    {
+      "iteration": 2,
+      "status": "completed",
+      "taskId": "Bringr-93j.15",
+      "taskTitle": "US-015: Cancel and guaranteed state restoration",
+      "taskCompleted": true,
+      "durationMs": 900872,
+      "startedAt": "2026-05-28T14:28:05.105Z",
+      "endedAt": "2026-05-28T14:43:05.977Z"
     }
   ],
   "skippedTaskIds": [],

@@ -1,13 +1,20 @@
 import SwiftUI
 
 /// The Preferences window. v1 surfaces Accessibility-permission status, the actions
-/// to grant it, and the interaction mode (US-009); later stories (US-013/US-014) add
-/// their settings here as additional sections.
+/// to grant it, the interaction mode (US-009), and the wheel appearance (US-014).
 struct PreferencesView: View {
     @EnvironmentObject private var permissions: PermissionsManager
     /// The persisted interaction mode. The same key is read by `RadialMenuController`
     /// (via `InteractionMode.current`), so a change here takes effect on the next summon.
     @AppStorage(InteractionMode.defaultsKey) private var interactionModeRaw = InteractionMode.default.rawValue
+    /// Persisted appearance. The same keys are read by `RadialAppearance.current` at
+    /// each summon, so changes apply on the next summon without a relaunch (AC2).
+    @AppStorage(RadialAppearance.radiusDefaultsKey)
+    private var outerRadius = Double(RadialAppearance.defaultOuterRadius)
+    @AppStorage(RadialAppearance.opacityDefaultsKey)
+    private var fillOpacity = RadialAppearance.defaultFillOpacity
+    @AppStorage(RadialAppearance.labelsDefaultsKey)
+    private var showsLabels = RadialAppearance.defaultShowsLabels
 
     var body: some View {
         VStack(alignment: .leading, spacing: 18) {
@@ -25,10 +32,43 @@ struct PreferencesView: View {
 
             interactionSection
 
+            Divider()
+
+            Text("Appearance")
+                .font(.title2)
+                .bold()
+
+            appearanceSection
+
             Spacer(minLength: 0)
         }
         .padding(28)
-        .frame(width: 460, height: 380)
+        .frame(width: 460, height: 560)
+    }
+
+    private var appearanceSection: some View {
+        let minRadius = Double(RadialAppearance.radiusRange.lowerBound)
+        let maxRadius = Double(RadialAppearance.radiusRange.upperBound)
+        let opacityRange = RadialAppearance.opacityRange
+
+        return VStack(alignment: .leading, spacing: 14) {
+            VStack(alignment: .leading, spacing: 2) {
+                Text("Size")
+                Slider(value: $outerRadius, in: minRadius...maxRadius)
+            }
+
+            VStack(alignment: .leading, spacing: 2) {
+                Text("Slice fill opacity")
+                Slider(value: $fillOpacity, in: opacityRange)
+            }
+
+            Toggle("Show labels", isOn: $showsLabels)
+
+            Text("Changes apply the next time you summon the wheel.")
+                .font(.callout)
+                .foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
+        }
     }
 
     private var interactionSection: some View {

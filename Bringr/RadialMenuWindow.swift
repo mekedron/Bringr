@@ -52,8 +52,13 @@ final class RadialMenuController: ObservableObject {
     @Published private(set) var prehighlighted: HoverRegion = .none
     /// Whether the overlay is currently on screen.
     @Published private(set) var isVisible = false
+    /// The appearance applied to the current summon (US-014): drives slice fill
+    /// opacity and label visibility in `RadialMenuView`. Re-read from the persisted
+    /// settings at each summon so a Preferences change takes effect next open (AC2).
+    @Published private(set) var appearance: RadialAppearance = .default
 
-    /// Fixed overlay side length, sized to fit every concentric ring at full depth.
+    /// Overlay side length for the current base size, fit to every concentric ring
+    /// at full depth.
     var overallDiameter: CGFloat { navigator.overallDiameter }
 
     private let registry: MenuRegistry
@@ -63,6 +68,10 @@ final class RadialMenuController: ObservableObject {
     /// Reads the persisted interaction mode at summon time so a Preferences change
     /// takes effect on the next summon without a relaunch (AC3 of US-009).
     private let modeProvider: () -> InteractionMode
+    /// Reads the persisted appearance at summon time, mirroring `modeProvider`, so a
+    /// Preferences appearance change applies on the next summon without a relaunch
+    /// (US-014 AC2).
+    private let appearanceProvider: () -> RadialAppearance
     /// Global event monitors that live only while the menu is open: cursor moves/drags
     /// feed hover to the navigator (during a held chord the moves arrive as drags),
     /// and key/mouse-downs drive the Esc and click-outside cancels (US-015). Installed
@@ -79,10 +88,12 @@ final class RadialMenuController: ObservableObject {
         registry: MenuRegistry,
         geometry: RadialGeometry = .default,
         windowControl: WindowController? = nil,
-        modeProvider: @escaping () -> InteractionMode = { InteractionMode.current() }
+        modeProvider: @escaping () -> InteractionMode = { InteractionMode.current() },
+        appearanceProvider: @escaping () -> RadialAppearance = { RadialAppearance.current() }
     ) {
         self.registry = registry
         self.modeProvider = modeProvider
+        self.appearanceProvider = appearanceProvider
         self.navigator = RadialNavigator(
             windowControl: windowControl ?? WindowController(),
             baseGeometry: geometry
@@ -160,10 +171,17 @@ final class RadialMenuController: ObservableObject {
     /// starts tracking the cursor so hover can drill into apps.
     private func summon(trigger: MenuTrigger, at cursor: CGPoint) {
         guard let root = registry.makeMenu(for: trigger) else { return }
+        // Apply the persisted appearance before resolving the tree: the size feeds
+        // both the rendered rings and the navigator's hit-testing through one shared
+        // geometry, so they stay in lock-step at any size (US-014 AC3).
+        appearance = appearanceProvider()
+        navigator.setBaseGeometry(appearance.geometry)
         navigator.open(appNodes: root.resolvedChildren())
         syncFromNavigator()
-        let origin = RadialMenuPlacement.windowOrigin(forCursor: cursor, windowSize: window.frame.size)
-        window.setFrameOrigin(origin)
+        let side = navigator.overallDiameter
+        let size = NSSize(width: side, height: side)
+        let origin = RadialMenuPlacement.windowOrigin(forCursor: cursor, windowSize: size)
+        window.setFrame(NSRect(origin: origin, size: size), display: false)
         window.orderFrontRegardless()
         isVisible = true
         startMenuMonitors()

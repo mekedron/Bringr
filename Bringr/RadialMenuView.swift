@@ -16,7 +16,8 @@ struct RadialMenuView: View {
                 RadialRingView(
                     ring: ring,
                     hovered: controller.hovered,
-                    prehighlighted: controller.prehighlighted
+                    prehighlighted: controller.prehighlighted,
+                    appearance: controller.appearance
                 )
             }
         }
@@ -39,6 +40,7 @@ struct RadialRingView: View {
     let ring: RadialRing
     let hovered: HoverRegion
     let prehighlighted: HoverRegion
+    let appearance: RadialAppearance
 
     var body: some View {
         let layout = RadialLayout(itemCount: ring.nodes.count, geometry: ring.geometry)
@@ -48,8 +50,9 @@ struct RadialRingView: View {
                 let region = HoverRegion.slice(level: ring.level, index: index)
                 let isHovered = hovered == region
                 let isPrehighlighted = !isHovered && prehighlighted == region
+                let opacity = appearance.fillOpacity(hovered: isHovered, prehighlighted: isPrehighlighted)
                 RadialWedge(layout: layout, index: index)
-                    .fill(Color.accentColor.opacity(fillOpacity(hovered: isHovered, prehighlighted: isPrehighlighted)))
+                    .fill(Color.accentColor.opacity(opacity))
                     .overlay(
                         RadialWedge(layout: layout, index: index)
                             .stroke(
@@ -58,19 +61,13 @@ struct RadialRingView: View {
                             )
                     )
 
-                RadialSliceLabel(node: node, index: index)
+                RadialSliceLabel(node: node, index: index, showsLabels: appearance.showsLabels)
                     .offset(
                         x: layout.sliceCenterOffset(at: index).x,
                         y: layout.sliceCenterOffset(at: index).y
                     )
             }
         }
-    }
-
-    private func fillOpacity(hovered: Bool, prehighlighted: Bool) -> Double {
-        if hovered { return 0.42 }
-        if prehighlighted { return 0.30 }
-        return 0.18
     }
 }
 
@@ -109,21 +106,28 @@ struct RadialWedge: Shape {
 struct RadialSliceLabel: View {
     let node: MenuNode
     let index: Int
+    /// When false (US-014 label-visibility off), the text title is hidden; the app
+    /// icon and the window index number stay so slices remain identifiable.
+    let showsLabels: Bool
 
     var body: some View {
         VStack(spacing: 4) {
             if let app = node.representedApp {
                 appIcon(for: app)
-                Text(node.title)
-                    .font(.caption)
-                    .lineLimit(1)
+                if showsLabels {
+                    Text(node.title)
+                        .font(.caption)
+                        .lineLimit(1)
+                }
             } else {
                 Text("\(index + 1)")
                     .font(.title3.weight(.bold).monospacedDigit())
-                Text(node.title)
-                    .font(.caption2)
-                    .lineLimit(1)
-                    .foregroundStyle(.secondary)
+                if showsLabels {
+                    Text(node.title)
+                        .font(.caption2)
+                        .lineLimit(1)
+                        .foregroundStyle(.secondary)
+                }
             }
         }
         .frame(maxWidth: 84)
