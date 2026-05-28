@@ -30,6 +30,19 @@ final class RadialMenuWindow: NSPanel {
         // underneath (see `RadialMenuController.startMenuMonitors`).
         acceptsMouseMovedEvents = true
     }
+
+    /// Place the overlay exactly where it is told, even overhanging a screen edge.
+    ///
+    /// The default `NSWindow` implementation clamps a frame so its *top* edge stays
+    /// below the screen's usable area (keeping a title bar reachable) without touching
+    /// x — so a wheel summoned near the top edge was shoved straight down while x
+    /// stayed correct (Bringr-93j.57). The pie must stay centred on the cursor at any
+    /// position, so opt out of constraining entirely; it's a transparent overlay, so
+    /// slices spilling past an edge are harmless and the cursor-centred geometry that
+    /// hit-testing depends on is preserved.
+    override func constrainFrameRect(_ frameRect: NSRect, to screen: NSScreen?) -> NSRect {
+        frameRect
+    }
 }
 
 /// Indirection over AppKit's event-monitor calls so the while-open monitor wiring is
