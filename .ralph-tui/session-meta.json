@@ -1,8 +1,8 @@
 {
-  "id": "599ac84a-aff5-492c-bdc6-1f8f1c332303",
+  "id": "acbe5cb7-4f38-4700-8c1e-4947c4db4521",
   "status": "running",
-  "startedAt": "2026-05-28T14:17:35.495Z",
-  "updatedAt": "2026-05-28T15:00:15.059Z",
+  "startedAt": "2026-05-28T15:11:12.072Z",
+  "updatedAt": "2026-05-28T15:11:12.072Z",
   "agentPlugin": "claude",
   "trackerPlugin": "beads-bv",
   "epicId": "Bringr-93j",
@@ -21,9 +21,9 @@
       }
     }
   ],
-  "currentIteration": 3,
+  "currentIteration": 0,
   "maxIterations": 10,
   "totalTasks": 0,
-  "tasksCompleted": 3,
+  "tasksCompleted": 0,
   "cwd": "/Users/nikita/Projects/Bringr"
 }

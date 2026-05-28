@@ -1,12 +1,12 @@
 {
   "version": 1,
-  "sessionId": "599ac84a-aff5-492c-bdc6-1f8f1c332303",
+  "sessionId": "acbe5cb7-4f38-4700-8c1e-4947c4db4521",
   "status": "running",
-  "startedAt": "2026-05-28T14:17:40.578Z",
-  "updatedAt": "2026-05-28T15:10:09.850Z",
-  "currentIteration": 3,
+  "startedAt": "2026-05-28T15:11:17.160Z",
+  "updatedAt": "2026-05-28T15:20:11.298Z",
+  "currentIteration": 0,
   "maxIterations": 10,
-  "tasksCompleted": 3,
+  "tasksCompleted": 0,
   "isPaused": false,
   "agentPlugin": "claude",
   "trackerState": {
@@ -27,7 +27,7 @@
         }
       }
     ],
-    "totalTasks": 17,
+    "totalTasks": 20,
     "tasks": [
       {
         "id": "Bringr-93j.1",
@@ -99,7 +99,7 @@
         "id": "Bringr-93j.12",
         "title": "US-012: Select and commit — focus and remember",
         "status": "completed",
-        "completedInSession": true
+        "completedInSession": false
       },
       {
         "id": "Bringr-93j.13",
@@ -111,7 +111,31 @@
         "id": "Bringr-93j.14",
         "title": "US-014: Appearance customization",
         "status": "completed",
-        "completedInSession": true
+        "completedInSession": false
+      },
+      {
+        "id": "Bringr-93j.15",
+        "title": "US-015: Cancel and guaranteed state restoration",
+        "status": "completed",
+        "completedInSession": false
+      },
+      {
+        "id": "Bringr-93j.16",
+        "title": "Launch-time Accessibility permission re-grant modal (dev cert reset)",
+        "status": "completed",
+        "completedInSession": false
+      },
+      {
+        "id": "Bringr-93j.18",
+        "title": "US-012 follow-up: committed window does not rise or take focus",
+        "status": "completed",
+        "completedInSession": false
+      },
+      {
+        "id": "Bringr-93j.19",
+        "title": "Switching interaction-mode setting kills hover feedback in the pie menu",
+        "status": "open",
+        "completedInSession": false
       },
       {
         "id": "Bringr-toj",
@@ -120,51 +144,14 @@
         "completedInSession": false
       },
       {
-        "id": "Bringr-93j.15",
-        "title": "US-015: Cancel and guaranteed state restoration",
-        "status": "completed",
-        "completedInSession": true
-      },
-      {
-        "id": "Bringr-93j.16",
-        "title": "Launch-time Accessibility permission re-grant modal (dev cert reset)",
-        "status": "completed",
+        "id": "Bringr-93j.20",
+        "title": "Three-finger gesture fires on tap/rest instead of requiring an actual click",
+        "status": "open",
         "completedInSession": false
       }
     ]
   },
-  "iterations": [
-    {
-      "iteration": 1,
-      "status": "completed",
-      "taskId": "Bringr-93j.12",
-      "taskTitle": "US-012: Select and commit — focus and remember",
-      "taskCompleted": true,
-      "durationMs": 600440,
-      "startedAt": "2026-05-28T14:17:54.212Z",
-      "endedAt": "2026-05-28T14:27:54.652Z"
-    },
-    {
-      "iteration": 2,
-      "status": "completed",
-      "taskId": "Bringr-93j.15",
-      "taskTitle": "US-015: Cancel and guaranteed state restoration",
-      "taskCompleted": true,
-      "durationMs": 900872,
-      "startedAt": "2026-05-28T14:28:05.105Z",
-      "endedAt": "2026-05-28T14:43:05.977Z"
-    },
-    {
-      "iteration": 3,
-      "status": "completed",
-      "taskId": "Bringr-93j.14",
-      "taskTitle": "US-014: Appearance customization",
-      "taskCompleted": true,
-      "durationMs": 1014378,
-      "startedAt": "2026-05-28T14:43:15.377Z",
-      "endedAt": "2026-05-28T15:00:09.755Z"
-    }
-  ],
+  "iterations": [],
   "skippedTaskIds": [],
   "cwd": "/Users/nikita/Projects/Bringr",
   "activeTaskIds": [],

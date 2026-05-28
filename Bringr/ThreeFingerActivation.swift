@@ -1,12 +1,13 @@
+import AppKit
 import Foundation
 import os
 
 // MARK: - Detector (pure)
 
-/// What a frame of finger counts means for the three-finger gesture.
+/// What an input means for the three-finger gesture.
 ///
 /// - `none`: nothing changed (the gesture is neither beginning nor ending).
-/// - `press`: the required number of fingers just landed — summon.
+/// - `press`: a real three-finger click just happened — summon.
 /// - `release`: the fingers lifted back below the required count — the signal
 ///   hold-to-select uses to commit (US-009).
 enum ThreeFingerReaction: Equatable, Sendable {
@@ -15,21 +16,37 @@ enum ThreeFingerReaction: Equatable, Sendable {
     case release
 }
 
-/// Recognises a three-finger trackpad press from a stream of per-frame finger
-/// counts, and reports when it begins and ends.
+/// One signal fed to the detector: either the current finger count from the
+/// multitouch stream, or a physical trackpad click transition. Keeping both as
+/// plain values lets the whole recogniser be unit-tested without a trackpad (AC4).
+enum ThreeFingerInput: Equatable, Sendable {
+    /// The number of fingers on the trackpad is now this.
+    case fingerCount(Int)
+    /// The trackpad was physically clicked (`down: true`) or the click released.
+    case click(down: Bool)
+}
+
+/// Recognises a three-finger trackpad *click* — not a mere touch — from a stream
+/// of finger counts and click transitions, and reports when it begins and ends.
 ///
 /// This is the host-independent half of the activation (AC4): it never touches the
-/// trackpad or any private framework, it only consumes integer finger counts, so
-/// all of its behaviour is unit-tested directly. A press is the rising edge to
-/// exactly `requiredFingerCount` fingers; the press is held (latched) until the
-/// count drops back below that, which is the release. Counts of one or two fingers
-/// are therefore ignored entirely (AC2), as is a four-or-more-finger gesture
-/// (which never equals the required count on a settled frame).
+/// trackpad or any private framework, it only consumes the value inputs above, so
+/// all of its behaviour is unit-tested directly. A press requires a physical click
+/// while exactly `requiredFingerCount` fingers are present — resting or tapping
+/// three fingers is therefore ignored (the bug this fixes). The press latches
+/// until the fingers lift back below the required count, which is the release that
+/// hold-to-select commits on; lifting the click alone does not commit. Counts of
+/// one or two fingers never reach the required count, so those clicks are ignored
+/// (AC2), as is a four-or-more-finger click.
 struct ThreeFingerPressDetector {
-    /// The number of simultaneous fingers that counts as a press. Configurable so
-    /// the recognised gesture is tunable and testable; v1 uses three.
+    /// The number of simultaneous fingers that, when clicked, counts as a press.
+    /// Configurable so the recognised gesture is tunable and testable; v1 uses three.
     let requiredFingerCount: Int
 
+    /// The most recent finger count reported by the trackpad.
+    private var fingerCount = 0
+    /// Whether the trackpad is physically clicked right now.
+    private var isClicking = false
     /// Whether a press is currently latched, awaiting the fingers to lift.
     private var isPressed = false
 
@@ -37,21 +54,31 @@ struct ThreeFingerPressDetector {
         self.requiredFingerCount = requiredFingerCount
     }
 
-    /// Feed one frame's finger count and get what it means for the gesture.
-    mutating func handle(fingerCount: Int) -> ThreeFingerReaction {
+    /// Feed one input and get what it means for the gesture. A press fires on the
+    /// rising edge of "clicked with exactly the required fingers" (in either order,
+    /// so the multitouch and click streams may arrive interleaved).
+    mutating func handle(_ input: ThreeFingerInput) -> ThreeFingerReaction {
+        switch input {
+        case .fingerCount(let count): fingerCount = count
+        case .click(let down): isClicking = down
+        }
+
         if isPressed {
             guard fingerCount < requiredFingerCount else { return .none }
             isPressed = false
             return .release
         }
-        guard fingerCount == requiredFingerCount else { return .none }
+
+        guard isClicking, fingerCount == requiredFingerCount else { return .none }
         isPressed = true
         return .press
     }
 
-    /// Clear all state, so a stale press from a previous session never resolves
-    /// into a new one. Called when the monitor (re)starts.
+    /// Clear all state, so a stale press or click from a previous session never
+    /// resolves into a new one. Called when the monitor (re)starts.
     mutating func reset() {
+        fingerCount = 0
+        isClicking = false
         isPressed = false
     }
 }
@@ -90,16 +117,16 @@ private let threeFingerContactCallback: MTContactCallback = { _, _, numTouches, 
 
 // MARK: - Live monitor (MultitouchSupport)
 
-/// Observes the trackpad through the private MultitouchSupport framework, feeds
-/// each frame's finger count into a `ThreeFingerPressDetector`, and fires
-/// `onPress` when a three-finger press is recognised (and `onRelease` when it
-/// ends).
+/// Observes the trackpad through the private MultitouchSupport framework for the
+/// finger count and a global `NSEvent` monitor for the physical click, feeds both
+/// into a `ThreeFingerPressDetector`, and fires `onPress` only on a real three-
+/// finger click (and `onRelease` when the fingers lift).
 ///
 /// The framework is loaded at runtime with `dlopen`/`dlsym` rather than linked, so
 /// if it (or any symbol, or any trackpad) is missing, `start()` fails gracefully,
 /// logs, and the app keeps running with three-finger activation simply disabled
-/// (AC3). The monitor is purely observational — it never consumes events — so one-
-/// and two-finger gestures pass through to the system untouched (AC2).
+/// (AC3). Both observers are passive — they never consume events — so every other
+/// gesture, including ordinary clicks, passes through to the system untouched (AC2).
 @MainActor
 final class ThreeFingerMonitor {
     /// The single active monitor, so the context-free C callback can route frames
@@ -115,6 +142,8 @@ final class ThreeFingerMonitor {
     private var device: MTDeviceRef?
     private var stopFunc: MTDeviceStopFunc?
     private var unregisterFunc: MTUnregisterCallbackFunc?
+    /// Global passive monitor for the physical trackpad click that gates a press.
+    private var clickMonitor: Any?
 
     private static let frameworkPath =
         "/System/Library/PrivateFrameworks/MultitouchSupport.framework/MultitouchSupport"
@@ -178,6 +207,18 @@ final class ThreeFingerMonitor {
         device = newDevice
         stopFunc = stop
         unregisterFunc = unregister
+
+        // The physical click that turns a three-finger rest into a press. A global
+        // NSEvent monitor is passive (it never consumes the click) and needs no
+        // Accessibility permission for mouse events, keeping this path permission-free.
+        clickMonitor = NSEvent.addGlobalMonitorForEvents(
+            matching: [.leftMouseDown, .leftMouseUp]
+        ) { [weak self] event in
+            MainActor.assumeIsolated {
+                self?.handleClick(down: event.type == .leftMouseDown)
+            }
+        }
+
         log.info("Three-finger trackpad monitor installed.")
         return true
     }
@@ -188,6 +229,8 @@ final class ThreeFingerMonitor {
             stopFunc?(device)
             unregisterFunc?(device, threeFingerContactCallback)
         }
+        if let clickMonitor { NSEvent.removeMonitor(clickMonitor) }
+        clickMonitor = nil
         if Self.active === self { Self.active = nil }
         device = nil
         stopFunc = nil
@@ -197,10 +240,21 @@ final class ThreeFingerMonitor {
         detector.reset()
     }
 
-    /// Feed one frame's finger count to the detector and perform its verdict.
-    /// `fileprivate` so the C callback can reach it; runs on the main actor.
+    /// Feed one frame's finger count to the detector. `fileprivate` so the C
+    /// callback can reach it; runs on the main actor.
     fileprivate func handleFrame(touchCount: Int) {
-        switch detector.handle(fingerCount: touchCount) {
+        react(to: detector.handle(.fingerCount(touchCount)))
+    }
+
+    /// Feed a physical trackpad click transition to the detector. The click is what
+    /// distinguishes a real three-finger press from a rest or tap.
+    private func handleClick(down: Bool) {
+        react(to: detector.handle(.click(down: down)))
+    }
+
+    /// Perform the detector's verdict.
+    private func react(to reaction: ThreeFingerReaction) {
+        switch reaction {
         case .press: onPress()
         case .release: onRelease()
         case .none: break
