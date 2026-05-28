@@ -1,52 +1,142 @@
 # Bringr
 
-A focused radial / pie-menu app launcher and window manager for macOS.
-
-> Status: early scaffold. The current build does nothing more than place a status-bar icon and an About window. Real functionality lands in the next iteration.
-
-## Why another one?
-
-There are already plenty of radial launchers on macOS — Launchy, Pieoneer, OrbitRing, Kando, DockDoor, Dock, Exposé, DockView, and so on. They all try to do *everything*: open files, fire URLs, run scripts, switch windows, paste snippets, control music. That's fine, but for me it dilutes the one thing I actually want from this kind of tool.
-
-Bringr's first and only job is:
+A focused radial / pie-menu window switcher for macOS. Bringr lives in the
+menu bar (no Dock icon, no main window) and does one thing well:
 
 **Switch fast between multiple windows of the same app, without touching the keyboard.**
 
-That's it. Files, folders, URLs, custom commands — maybe later. Not now.
+You summon a wheel at your cursor, glide to an app, glide to one of its
+windows, and let go. That window comes forward, focus follows, and everything
+else snaps back to where it was. No Cmd-Tab, no Mission Control, no clicking
+around the Dock guessing which Chrome window has the tab you wanted.
+
+## Why another one?
+
+There are already plenty of radial launchers on macOS — Launchy, Pieoneer,
+OrbitRing, Kando, DockDoor, and so on. They all try to do *everything*: open
+files, fire URLs, run scripts, switch windows, paste snippets, control music.
+That's fine, but for me it dilutes the one thing I actually want from this kind
+of tool. Bringr's first and only job is same-app window switching. Files,
+folders, URLs, custom commands — maybe later (see [Out of scope](#out-of-scope)).
 
 ## The core interaction
 
-1. Summon the pie menu (hotkey or trackpad gesture — TBD).
-2. The wheel shows the apps that currently have open windows.
-3. Hover an app — say Google Chrome — and everything that isn't Chrome fades away. A sub-wheel appears with one slice per Chrome window, each with a live preview.
-4. Hover a window slice — every other window in that app hides too, leaving only the one under the cursor on screen. Quick visual confirmation.
-5. Click — that window comes forward, focus follows, and Bringr remembers the choice for next time.
+1. **Summon** the wheel at your cursor (see [Summoning the wheel](#summoning-the-wheel)).
+2. The top ring shows every app that currently has on-screen windows, ordered
+   like ⌘-Tab (most recently used first) by default.
+3. **Hover an app** — say Google Chrome — and everything that isn't Chrome
+   gets out of the way (the exact effect is the [reveal strategy](#reveal),
+   "hide others" by default). A sub-wheel opens with one slice per Chrome window.
+4. **Hover a window** — every other Chrome window gets out of the way too,
+   leaving only the one under your cursor on screen. Instant visual confirmation.
+5. **Commit** — that window comes forward, its app activates, focus follows, and
+   every app/window that was pushed aside is restored to exactly where it was.
 
-The whole flow stays in the wheel. No Cmd-Tab, no Mission Control, no clicking around the Dock guessing which Chrome window has the tab you wanted.
+Bringr remembers which window you picked for each app and pre-highlights it the
+next time you open that app's sub-wheel.
 
-## What's out of scope (for now)
+Backing out is always safe: Esc, clicking the centre dead zone, clicking
+outside, or releasing the trigger off any slice all cancel cleanly and restore
+your windows. If Bringr is ever force-quit mid-reveal, it restores any stranded
+window the next time it launches.
 
-- Opening files / folders
-- Launching URLs
+> **v1 note:** window slices show a number and title, not a captured thumbnail.
+> Live previews need Screen Recording permission and are [future work](#out-of-scope).
+
+## Summoning the wheel
+
+Bringr offers two global triggers, both configurable in Preferences:
+
+- **Mouse** — *Left + right click together* (the default), or *hold a modifier
+  combination*. Normal single clicks pass through untouched.
+- **Trackpad** — *hold a modifier combination* (defaults to **Fn**). No click or
+  tap needed; just hold the keys.
+
+You can also open the wheel from the menu-bar icon via **Open Window Switcher**.
+
+How a release behaves depends on the interaction mode:
+
+- **Hold to select** (default): the wheel stays open while you hold the trigger;
+  release over a slice to choose it, release on the centre to cancel.
+- **Click to stay open**: the wheel stays after you release; click a slice to
+  choose it, or click the centre / press Esc to cancel.
+
+## Preferences
+
+Open **Preferences…** from the menu-bar icon (⌘,). Every setting is persisted
+and takes effect on the **next summon** — no relaunch needed.
+
+| Section | What it controls |
+| --- | --- |
+| **Permissions** | Accessibility status, with **Open System Settings** and **Re-check** actions. |
+| **Mouse** | Activation method: *left + right click* or *hold modifier keys* (with a Fn / Control / Option / Shift / Command picker). |
+| **Trackpad** | The modifier combination to hold (default **Fn**). |
+| **Startup** | Launch Bringr at login. |
+| **Interaction** | *Hold to select* (default) vs *Click to stay open*. |
+| **Reveal** | How other apps/windows get out of the way (see [below](#reveal)). |
+| **Sorting** | Apps: *Recently used (⌘-Tab order)* (default) or *By name*. Windows: *Recently used* (default) or *Fixed position*. |
+| **Appearance** | Wheel size, slice fill opacity, and label visibility. |
+
+### Reveal
+
+The reveal strategy applies at both wheel levels — hovering an app reveals it
+against the other apps, and hovering a window reveals it against its app's other
+windows:
+
+- **Hide others** (default) — hide everything except the hovered app/window, so
+  only it remains on screen.
+- **Raise to front** — bring the hovered app/window forward, leaving everything
+  else in place (the most reversible option, nothing is hidden).
+- **Dim others** — keep the hovered app/window bright and dim everything else
+  behind a spotlight overlay.
+
+## Permissions
+
+Bringr needs **Accessibility** access to enumerate windows, switch between them,
+and observe its global activation triggers. On first launch it detects the
+current state and, if access is missing, points you to the right System Settings
+pane. Until access is granted the activation triggers are inert (the app never
+crashes), and Bringr picks up the change automatically once you grant it — no
+relaunch required.
+
+## Requirements
+
+- macOS 14.0 or later
+- Accessibility permission (see above)
+
+## Out of scope
+
+Bringr v1 is deliberately narrow. The following are explicitly **not** part of
+v1 (the architecture leaves room for them, but none ship today):
+
+- Live / captured window-preview thumbnails (needs Screen Recording permission)
+- Opening files, folders, or URLs
 - Custom commands and scripts
-- Clipboard, snippets, anything text-based
-
-These may show up later as opt-in modules, but they're explicitly *not* part of v1. The point is to do one thing well first.
+- A UI for building or reordering your own menus
+- Animations
+- Cross-restart preview fidelity (remembered selections match best-effort by
+  title or position, not by an exact window id)
 
 ## Stack
 
 - Pure Swift, latest toolchain
-- SwiftUI + AppKit interop where needed (status bar, window enumeration, screen capture for previews)
-- Xcode project — open `Bringr.xcodeproj` and hit Run
+- SwiftUI for the menu bar, About, and Preferences windows; AppKit / Core
+  Graphics / Accessibility (AXUIElement) for the overlay, window enumeration,
+  control, and global event taps
+- Xcode project — open `Bringr.xcodeproj` and press ⌘R
 
-## Building
+## Building & running
 
 ```sh
-xcodebuild -project Bringr.xcodeproj -scheme Bringr -configuration Debug -derivedDataPath build
-open build/Build/Products/Debug/Bringr.app
+# Build — must end in "** BUILD SUCCEEDED **"
+xcodebuild -project Bringr.xcodeproj -scheme Bringr -configuration Debug -derivedDataPath build build
+
+# Run (always pkill first so the fresh build launches, not a stale instance)
+pkill -x Bringr 2>/dev/null; open build/Build/Products/Debug/Bringr.app
 ```
 
-Or just open the project in Xcode and press ⌘R.
+Or just open the project in Xcode and press ⌘R. Bringr has no Dock icon — look
+for the hexagon-grid icon in the menu bar.
 
 ## Quality gates
 
