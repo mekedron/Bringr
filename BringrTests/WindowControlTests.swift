@@ -190,6 +190,70 @@ final class WindowControlTests: XCTestCase {
         XCTAssertFalse(fake.isHidden(AppID(pid: 1)))
     }
 
+    // MARK: - US-012 commit: restore everything else, then raise + focus the target
+
+    func testCommitRestoresOthersThenRaisesAndFocusesTarget() {
+        let appA = AppID(pid: 1)
+        let target = WindowID(app: appA, token: 11)
+        let fake = FakeWindowSystem(
+            apps: [makeApp(1, windowTokens: [10, 11]), makeApp(2)],
+            frontmost: appA
+        )
+        let controller = WindowController(system: fake)
+        // A reveal session in flight: app 2 hidden, window 10 minimized to isolate 11.
+        controller.hideOtherApps(besides: appA)
+        controller.hideOtherWindows(besides: target)
+        XCTAssertTrue(fake.isHidden(AppID(pid: 2)))
+        XCTAssertTrue(fake.isMinimized(WindowID(app: appA, token: 10)))
+
+        controller.commit(target)
+
+        // AC2: every app/window moved out of the way is restored, session ended.
+        XCTAssertFalse(fake.isHidden(AppID(pid: 2)))
+        XCTAssertFalse(fake.isMinimized(WindowID(app: appA, token: 10)))
+        XCTAssertFalse(controller.hasActiveSession)
+        // AC1: the target is raised, focused, and its app active — over the restore.
+        XCTAssertEqual(fake.frontmost, appA)
+        XCTAssertEqual(fake.focusedWindow, target)
+        XCTAssertEqual(fake.windows(of: appA).first, target)
+    }
+
+    func testCommitUnminimizesATargetThatWasMinimizedBeforeSummon() {
+        let appA = AppID(pid: 1)
+        let target = WindowID(app: appA, token: 11)
+        let fake = FakeWindowSystem(apps: [makeApp(1, windowTokens: [10, 11])], frontmost: appA)
+        // The chosen window was minimized before any summon, so the captured baseline
+        // (and thus restore) would leave it minimized.
+        fake.setMinimized(target, true)
+        let controller = WindowController(system: fake)
+        controller.hideOtherWindows(besides: WindowID(app: appA, token: 10))
+
+        controller.commit(target)
+
+        // The user picked it, so it surfaces and focuses regardless of its prior state.
+        XCTAssertFalse(fake.isMinimized(target))
+        XCTAssertEqual(fake.focusedWindow, target)
+        XCTAssertEqual(fake.windows(of: appA).first, target)
+    }
+
+    func testCommitWithoutAnActiveSessionStillRaisesAndFocuses() {
+        let appA = AppID(pid: 1)
+        let target = WindowID(app: appA, token: 11)
+        let fake = FakeWindowSystem(
+            apps: [makeApp(1, windowTokens: [10, 11])],
+            frontmost: AppID(pid: 99)
+        )
+        let controller = WindowController(system: fake)
+
+        // No reveal happened (committing the pre-highlighted window straight away):
+        // restore is a no-op, but the raise/focus must still run.
+        controller.commit(target)
+
+        XCTAssertEqual(fake.frontmost, appA)
+        XCTAssertEqual(fake.focusedWindow, target)
+        XCTAssertEqual(fake.windows(of: appA).first, target)
+    }
+
     // MARK: - Fixtures
 
     private func makeApp(

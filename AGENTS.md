@@ -93,13 +93,13 @@ bd close <id>         # Complete work
 
 ## Beads Workflow Integration
 
-This project uses [beads_rust](https://github.com/Dicklesworthstone/beads_rust) (`br`) for issue tracking and [beads_viewer](https://github.com/Dicklesworthstone/beads_viewer) (`bv`) for graph-aware triage. Issues are stored in `.beads/` and tracked in git.
+This project uses [beads](https://github.com/gastownhall/beads) (`bd`) for issue tracking and [beads_viewer](https://github.com/Dicklesworthstone/beads_viewer) (`bv`) for graph-aware triage. Issues are stored in `.beads/` and tracked in git.
 
 ### Using bv as an AI sidecar
 
 bv is a graph-aware triage engine for Beads projects (.beads/beads.jsonl). Instead of parsing JSONL or hallucinating graph traversal, use robot flags for deterministic, dependency-aware outputs with precomputed metrics (PageRank, betweenness, critical path, cycles, HITS, eigenvector, k-core).
 
-**Scope boundary:** bv handles *what to work on* (triage, priority, planning). `br` handles creating, modifying, and closing beads.
+**Scope boundary:** bv handles *what to work on* (triage, priority, planning). `bd` handles creating, modifying, and closing beads.
 
 **CRITICAL: Use ONLY --robot-* flags. Bare bv launches an interactive TUI that blocks your session.**
 
@@ -121,7 +121,7 @@ bv --robot-next          # Minimal: just the single top pick + claim command
 bv --robot-triage --format toon
 ```
 
-Before claiming, verify current state with `br show <id> --json` or `br ready --json`. `recommendations` can include graph-important blocked or assigned work; only `quick_ref.top_picks` and non-empty `claim_command` fields represent claimable work.
+Before claiming, verify current state with `bd show <id> --json` or `bd ready --json`. `recommendations` can include graph-important blocked or assigned work; only `quick_ref.top_picks` and non-empty `claim_command` fields represent claimable work.
 
 #### Other bv Commands
 
@@ -144,40 +144,40 @@ bv --recipe actionable --robot-plan          # Pre-filter: ready to work (no blo
 bv --recipe high-impact --robot-triage       # Pre-filter: top PageRank scores
 ```
 
-### br Commands for Issue Management
+### bd Commands for Issue Management
 
 ```bash
-br ready              # Show issues ready to work (no blockers)
-br list --status=open # All open issues
-br show <id>          # Full issue details with dependencies
-br create --title="..." --type=task --priority=2
-br update <id> --status=in_progress
-br close <id> --reason="Completed"
-br close <id1> <id2>  # Close multiple issues at once
-br sync --flush-only  # Export DB to JSONL
+bd ready              # Show issues ready to work (no blockers)
+bd list --status=open # All open issues
+bd show <id>          # Full issue details with dependencies
+bd create --title="..." --type=task --priority=2
+bd update <id> --status=in_progress
+bd close <id> --reason="Completed"
+bd close <id1> <id2>  # Close multiple issues at once
+bd export             # Export issues to JSONL
 ```
 
 ### Workflow Pattern
 
 1. **Triage**: Run `bv --robot-triage` to find the highest-impact actionable work
-2. **Claim**: Use `br update <id> --status=in_progress`
+2. **Claim**: Use `bd update <id> --status=in_progress`
 3. **Work**: Implement the task
-4. **Complete**: Use `br close <id>`
-5. **Sync**: Always run `br sync --flush-only` at session end
+4. **Complete**: Use `bd close <id>`
+5. **Sync**: Always run `bd export` at session end
 
 ### Key Concepts
 
-- **Dependencies**: Issues can block other issues. `br ready` shows only unblocked work.
+- **Dependencies**: Issues can block other issues. `bd ready` shows only unblocked work.
 - **Priority**: P0=critical, P1=high, P2=medium, P3=low, P4=backlog (use numbers 0-4, not words)
 - **Types**: task, bug, feature, epic, chore, docs, question
-- **Blocking**: `br dep add <issue> <depends-on>` to add dependencies
+- **Blocking**: `bd dep add <issue> <depends-on>` to add dependencies
 
 ### Session Protocol
 
 ```bash
 git status              # Check what changed
 git add <files>         # Stage code changes
-br sync --flush-only    # Export beads changes to JSONL
+bd export               # Export beads changes to JSONL
 git commit -m "..."     # Commit everything
 git push                # Push to remote
 ```
