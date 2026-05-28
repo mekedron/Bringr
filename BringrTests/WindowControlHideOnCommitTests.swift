@@ -2,13 +2,13 @@ import XCTest
 @testable import Bringr
 
 /// Covers the "leave only my selection on screen" behaviour `WindowController.commit`
-/// performs when the setting is on (Bringr-93j.27), kept in its own file so
+/// performs when the setting is on (Bringr-93j.27, Bringr-93j.49), kept in its own file so
 /// `WindowControlTests` stays within the lint length limits. The persistence helper is
 /// covered by `HideOnCommitTests`; the navigator wiring by `RadialNavigatorCommitTests`.
 @MainActor
 final class WindowControlHideOnCommitTests: XCTestCase {
 
-    func testWindowCommitMinimizesSiblingsAndHidesOtherApps() {
+    func testWindowCommitHidesOtherAppsButKeepsSiblingsVisible() {
         let appA = AppID(pid: 1)
         let target = WindowID(app: appA, token: 11)
         let sibling = WindowID(app: appA, token: 10)
@@ -21,8 +21,9 @@ final class WindowControlHideOnCommitTests: XCTestCase {
 
         controller.commit(target)
 
-        // Only the chosen window is left: its app's sibling minimizes, the other app hides.
-        XCTAssertTrue(fake.isMinimized(sibling))
+        // The other app hides, but the chosen app's sibling stays on screen — hiding never
+        // applies within the selected app; only it is activated (Bringr-93j.49).
+        XCTAssertFalse(fake.isMinimized(sibling))
         XCTAssertTrue(fake.isHidden(AppID(pid: 2)))
         // The selection itself is surfaced, focused, and frontmost — never minimized/hidden.
         XCTAssertFalse(fake.isMinimized(target))
@@ -49,7 +50,7 @@ final class WindowControlHideOnCommitTests: XCTestCase {
         XCTAssertEqual(fake.focusedWindow, target)
     }
 
-    func testAppCommitLeavesOnlyTheAppsFrontWindow() {
+    func testAppCommitHidesOtherAppsButKeepsAllItsWindowsVisible() {
         let appA = AppID(pid: 1)
         let frontWindow = WindowID(app: appA, token: 10)
         let otherWindow = WindowID(app: appA, token: 11)
@@ -62,10 +63,11 @@ final class WindowControlHideOnCommitTests: XCTestCase {
 
         controller.commit(appA)
 
-        // App-level commit clears everything else away too, down to the app's front window.
+        // App-level commit hides the other apps but keeps ALL of the chosen app's windows on
+        // screen, activating its front one — nothing within the app minimizes (Bringr-93j.49).
         XCTAssertEqual(fake.focusedWindow, frontWindow)
         XCTAssertEqual(fake.frontmost, appA)
-        XCTAssertTrue(fake.isMinimized(otherWindow))
+        XCTAssertFalse(fake.isMinimized(otherWindow))
         XCTAssertTrue(fake.isHidden(AppID(pid: 2)))
         XCTAssertFalse(fake.isMinimized(frontWindow))
     }

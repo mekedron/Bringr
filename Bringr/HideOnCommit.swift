@@ -1,12 +1,12 @@
 import Foundation
 
-/// Optional "leave only my selection on screen" behaviour (Bringr-93j.27). When enabled,
-/// committing a selection doesn't just surface it — it sweeps every other app and window
-/// off the screen so only the chosen one remains:
-/// - picking a window leaves only that window (its app's other windows minimize, every
-///   other app hides);
-/// - picking an app leaves only that app's front window (the same sweep, scoped to it);
-/// so the screen is reduced to exactly the selection.
+/// Optional "leave only my selection on screen" behaviour (Bringr-93j.27, Bringr-93j.49).
+/// When enabled, committing a selection doesn't just surface it — it hides every OTHER app
+/// (Cmd-H), so only the chosen app is left on screen. Hiding never applies within the chosen
+/// app: all of its windows stay visible, and a picked window is simply activated rather than
+/// minimizing its siblings (Bringr-93j.49 — minimizing is slow and unpleasant):
+/// - picking a window keeps all the app's windows and activates the chosen one;
+/// - picking an app keeps all the app's windows and activates its front one.
 ///
 /// Off by default — an opt-in setting, so unless the user turns it on a commit behaves
 /// exactly as before and nothing extra is hidden. A caseless namespace for the read

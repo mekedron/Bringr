@@ -94,9 +94,9 @@ final class RadialNavigatorCommitTests: XCTestCase {
         XCTAssertEqual(fixture.navigator.rings.count, 2)
     }
 
-    // MARK: - Bringr-93j.27: "leave only my selection on screen" forwarded through commit
+    // MARK: - Bringr-93j.27/.49: "leave only my selection on screen" forwarded through commit
 
-    func testWindowCommitWithHideOnCommitClearsEverythingElseAway() {
+    func testWindowCommitWithHideOnCommitHidesOtherAppsButKeepsSiblings() {
         let fixture = makeFixture()
         fixture.navigator.setHideOnCommitEnabled(true)
         fixture.navigator.open(appNodes: fixture.appNodes)
@@ -107,11 +107,11 @@ final class RadialNavigatorCommitTests: XCTestCase {
 
         XCTAssertEqual(committed, .window(WindowID(app: AppID(pid: 10), token: 12)))
         XCTAssertEqual(fixture.fake.focusedWindow, WindowID(app: AppID(pid: 10), token: 12))
-        // Only the chosen window remains: the other apps stay hidden and Chrome's other
-        // window is minimized — the reveal's restore is overridden by the clear-on-commit.
+        // Only the other apps are hidden; Chrome's other window stays on screen (un-parked by
+        // the reveal restore) — hiding never reaches within the selected app (Bringr-93j.49).
         XCTAssertTrue(fixture.fake.isHidden(AppID(pid: 20)))
         XCTAssertTrue(fixture.fake.isHidden(AppID(pid: 30)))
-        XCTAssertTrue(fixture.fake.isMinimized(WindowID(app: AppID(pid: 10), token: 11)))
+        XCTAssertFalse(fixture.fake.isMinimized(WindowID(app: AppID(pid: 10), token: 11)))
         XCTAssertFalse(fixture.fake.isMinimized(WindowID(app: AppID(pid: 10), token: 12)))
     }
 

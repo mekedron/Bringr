@@ -92,7 +92,9 @@ final class WindowController {
         _ = system.windows(of: window.app)
         system.setMinimized(window, false)
         raiseAndFocus(window)
-        if hideOnCommit { clearEverythingElse(keeping: window) }
+        // "Leave only my selection" hides the OTHER apps; the chosen window's siblings stay
+        // on screen and only it is activated — never minimizing within the app (Bringr-93j.49).
+        if hideOnCommit { hideEveryAppExcept(window.app) }
     }
 
     /// Commit `app` as the user's choice from the first-level apps ring. This is
@@ -103,34 +105,24 @@ final class WindowController {
         if let frontWindow = system.windows(of: app).first {
             system.setMinimized(frontWindow, false)
             raiseAndFocus(frontWindow)
-            // "Leave only my selection" at the app level clears everything else away too,
-            // down to just this app's front window (Bringr-93j.27).
-            if hideOnCommit { clearEverythingElse(keeping: frontWindow) }
         } else {
             system.activate(app)
-            // No window to keep — still hide the other apps so only the chosen one remains.
-            if hideOnCommit { hideEveryAppExcept(app) }
         }
+        // "Leave only my selection" hides the OTHER apps but never touches this app's own
+        // windows — every window of the chosen app stays on screen (Bringr-93j.49).
+        if hideOnCommit { hideEveryAppExcept(app) }
     }
 
-    // MARK: - Leave-only-my-selection on commit (Bringr-93j.27)
+    // MARK: - Leave-only-my-selection on commit (Bringr-93j.27, Bringr-93j.49)
 
-    /// Sweep every other app/window off the screen so only `window` remains: hide every
-    /// other app (Cmd-H) and minimize this app's other windows. Runs after `commit` has
-    /// already restored the reveal and ended the session, so these are deliberate,
-    /// permanent, user-recoverable state changes — not journaled and never auto-undone,
-    /// unlike the reveal's temporary off-screen park. Re-enumerating the app first refills
-    /// the AX element cache so the minimize calls resolve.
-    private func clearEverythingElse(keeping window: WindowID) {
-        hideEveryAppExcept(window.app)
-        for other in system.windows(of: window.app)
-        where other != window && !system.isMinimized(other) {
-            system.setMinimized(other, true)
-        }
-    }
-
-    /// Hide every app except `target` (Cmd-H), skipping those already hidden. The permanent,
-    /// outside-a-session counterpart to `hideOtherApps`, which captures a baseline to restore.
+    /// Hide every app except `target` (Cmd-H), skipping those already hidden — the
+    /// "leave only my selection on screen" sweep a commit runs when the setting is on. It
+    /// only ever hides OTHER apps: every window of the chosen app stays on screen and the
+    /// picked one is simply activated, never minimizing siblings to surface one (Bringr-93j.49).
+    /// Runs after `commit` has restored the reveal and ended the session, so these are
+    /// deliberate, permanent, user-recoverable changes — not journaled and never auto-undone.
+    /// The permanent, outside-a-session counterpart to `hideOtherApps`, which captures a
+    /// baseline to restore.
     private func hideEveryAppExcept(_ target: AppID) {
         for app in system.runningApps() where app != target && !system.isHidden(app) {
             system.setHidden(app, true)
