@@ -112,6 +112,9 @@ final class RadialMenuController: ObservableObject {
     /// Observes active-Space changes while open so a Space switch mid-reveal cancels
     /// cleanly rather than stranding hidden windows (US-015 trigger-loss).
     private var spaceObserver: (any NSObjectProtocol)?
+    /// Windows-sub-wheel retry state (Bringr-93j.31): see `scheduleSubWheelRetry`.
+    private var subWheelRetry: DispatchWorkItem?
+    private var subWheelRetriesLeft = 0
 
     /// macOS virtual key code for Esc.
     private static let escapeKeyCode: UInt16 = 53
@@ -315,6 +318,8 @@ final class RadialMenuController: ObservableObject {
     }
 
     private func stopMenuMonitors() {
+        subWheelRetry?.cancel()
+        subWheelRetry = nil
         for monitor in eventMonitors { monitorInstaller.remove(monitor) }
         eventMonitors.removeAll()
         if let spaceObserver {
@@ -337,9 +342,30 @@ final class RadialMenuController: ObservableObject {
         }
     }
 
-    private func updateHover(forGlobalCursor cursor: CGPoint) {
+    private func updateHover(forGlobalCursor cursor: CGPoint, isRetry: Bool = false) {
         navigator.updateHover(navigator.region(forOffset: offset(forGlobalCursor: cursor)))
         syncFromNavigator()
+        scheduleSubWheelRetry(isRetry: isRetry)
+    }
+
+    /// Re-run a hover that landed on an app slice whose sub-wheel didn't open, so it
+    /// shows even if the cursor holds still while the just-un-hidden app's windows
+    /// settle into the live scan (Bringr-93j.31). Cursor motion refills the budget; a
+    /// now-window-less app stops once it's spent. Cancelled on dismiss.
+    private func scheduleSubWheelRetry(isRetry: Bool) {
+        subWheelRetry?.cancel()
+        subWheelRetry = nil
+        if !isRetry { subWheelRetriesLeft = 6 }
+        guard isVisible, subWheelRetriesLeft > 0,
+              case .slice(level: 0, _) = navigator.hovered,
+              !navigator.hasWindowSubWheel else { return }
+        subWheelRetriesLeft -= 1
+        let work = DispatchWorkItem { [weak self] in
+            guard let self, self.isVisible else { return }
+            self.updateHover(forGlobalCursor: NSEvent.mouseLocation, isRetry: true)
+        }
+        subWheelRetry = work
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.03, execute: work)
     }
 
     // MARK: - Cursor → target resolution

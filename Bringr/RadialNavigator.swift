@@ -152,6 +152,13 @@ final class RadialNavigator {
         prehighlighted = .none
     }
 
+    /// Whether the windows sub-wheel is open and populated: a level-1 ring carrying at
+    /// least one window node. False when an app expansion's live scan momentarily
+    /// returned no windows (Bringr-93j.31), which the next hover/retry rebuilds.
+    var hasWindowSubWheel: Bool {
+        rings.count > 1 && !rings[1].nodes.isEmpty
+    }
+
     // MARK: - Hit-testing
 
     /// Map a cursor `offset` (from the ring centre, +x right / +y down) to the
@@ -252,7 +259,13 @@ final class RadialNavigator {
     /// the pre-summon state. Pre-highlights the app's remembered window, if any
     /// still matches the freshly resolved sub-wheel. (AC4)
     private func expandApp(at index: Int) {
-        guard expandedAppIndex != index, let appsRing = rings.first,
+        // Re-hovering the same app is a no-op only once its sub-wheel is populated. If
+        // the windows came back empty — the live scan can momentarily return nothing
+        // right after the reveal un-hides the app (Bringr-93j.31) — fall through so a
+        // later hover (or the controller's retry) rebuilds it once the scan settles.
+        // expandedAppIndex is still set on the empty pass, so a dead-zone collapse
+        // still restores the reveal.
+        guard !(expandedAppIndex == index && hasWindowSubWheel), let appsRing = rings.first,
               index >= 0, index < appsRing.nodes.count else { return }
         let appNode = appsRing.nodes[index]
         if let appID = appNode.representedApp {
