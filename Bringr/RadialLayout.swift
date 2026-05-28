@@ -18,40 +18,68 @@ struct RadialGeometry: Equatable, Sendable {
     var diameter: CGFloat { outerRadius * 2 }
 }
 
-/// Even angular layout of N slices around a ring, plus hit-testing from a cursor
-/// offset. Pure geometry — no AppKit, no SwiftUI — so it is fully unit-tested and
-/// the same math drives both rendering (`RadialMenuView`) and selection (US-009+).
+/// One slice's angular extent: a `start` edge and a `span`, both clockwise from
+/// straight up in radians (y-down convention). The slice covers `[start, start +
+/// span)`; its centre is `start + span / 2`. Letting every slice carry its own arc
+/// is what lets a ring be unevenly divided (the US-016 window sub-wheel) while the
+/// apps ring stays an exact equal division.
+struct SliceArc: Equatable, Sendable {
+    let start: CGFloat
+    let span: CGFloat
+}
+
+/// Angular layout of slices around a ring, plus hit-testing from a cursor offset.
+/// Pure geometry — no AppKit, no SwiftUI — so it is fully unit-tested and the same
+/// math drives both rendering (`RadialMenuView`) and selection (US-009+).
 ///
-/// Convention: slice 0 is centred at the top (12 o'clock) and slices advance
-/// clockwise. Offsets and the hit-test point are measured from the ring centre in
-/// a y-down space (matching SwiftUI's drawing coordinates): +x right, +y down.
+/// A layout is a table of per-slice arcs. Equal division (`init(itemCount:)`) keeps
+/// the v1 convention — slice 0 centred at the top (12 o'clock), slices advancing
+/// clockwise, the ring fully covered — while `windowRing(...)` builds the uneven,
+/// app-aligned arcs of the US-016 sub-wheel. Offsets and the hit-test point are
+/// measured from the ring centre in a y-down space (matching SwiftUI's drawing
+/// coordinates): +x right, +y down.
 struct RadialLayout: Equatable, Sendable {
-    let itemCount: Int
+    private let arcs: [SliceArc]
     let geometry: RadialGeometry
 
+    /// Number of slices in the ring.
+    var itemCount: Int { arcs.count }
+
+    /// Equal division: `itemCount` slices of identical width, slice 0 centred at the
+    /// top and the ring fully covered — the v1 apps-ring layout.
     init(itemCount: Int, geometry: RadialGeometry = .default) {
-        self.itemCount = max(0, itemCount)
+        let count = max(0, itemCount)
+        let span = count > 0 ? (2 * CGFloat.pi) / CGFloat(count) : 0
+        self.arcs = (0..<count).map { SliceArc(start: CGFloat($0) * span - span / 2, span: span) }
         self.geometry = geometry
     }
 
-    /// Angular width of one slice, in radians. Zero when there are no items.
-    var sliceSpan: CGFloat {
-        itemCount > 0 ? (2 * .pi) / CGFloat(itemCount) : 0
+    /// An explicit, possibly uneven arc table — the general form behind `windowRing`.
+    init(arcs: [SliceArc], geometry: RadialGeometry = .default) {
+        self.arcs = arcs
+        self.geometry = geometry
     }
+
+    /// Width of the first slice, in radians; zero when empty. For an equal division
+    /// every slice has this width, so existing call sites read it as "the" span.
+    var sliceSpan: CGFloat { arcs.first?.span ?? 0 }
+
+    /// Angular width of slice `index`, in radians.
+    func span(ofSliceAt index: Int) -> CGFloat { arc(at: index).span }
 
     /// Centre angle of slice `index`, clockwise from straight up, in radians.
     func centerAngle(ofSliceAt index: Int) -> CGFloat {
-        CGFloat(index) * sliceSpan
+        let arc = arc(at: index)
+        return arc.start + arc.span / 2
     }
 
     /// Leading edge angle of slice `index`, clockwise from straight up.
-    func startAngle(ofSliceAt index: Int) -> CGFloat {
-        centerAngle(ofSliceAt: index) - sliceSpan / 2
-    }
+    func startAngle(ofSliceAt index: Int) -> CGFloat { arc(at: index).start }
 
     /// Trailing edge angle of slice `index`, clockwise from straight up.
     func endAngle(ofSliceAt index: Int) -> CGFloat {
-        centerAngle(ofSliceAt: index) + sliceSpan / 2
+        let arc = arc(at: index)
+        return arc.start + arc.span
     }
 
     /// A point at `angle` (clockwise from straight up) and `radius` from the ring
@@ -66,18 +94,68 @@ struct RadialLayout: Equatable, Sendable {
         ringPoint(angle: centerAngle(ofSliceAt: index), radius: geometry.midRadius)
     }
 
-    /// The slice a cursor offset falls in, or `nil` for the dead zone / outside
-    /// the ring. `offset` is measured from the ring centre, +x right / +y down.
+    /// The slice a cursor offset falls in, or `nil` for the dead zone, outside the
+    /// ring, or an uncovered gap between arcs. `offset` is measured from the ring
+    /// centre, +x right / +y down. Containment is modulo-2π so arcs may wrap past the
+    /// 12 o'clock seam; an equal division still returns exactly one slice per angle.
     func hitTest(_ offset: CGPoint) -> Int? {
-        guard itemCount > 0 else { return nil }
         let distance = hypot(offset.x, offset.y)
         guard distance >= geometry.innerRadius, distance <= geometry.outerRadius else {
             return nil
         }
         // Angle clockwise from straight up: up is (0, -1) → 0; right (1, 0) → π/2.
         let angle = normalized(atan2(offset.x, -offset.y))
-        let halfSpan = sliceSpan / 2
-        return Int((angle + halfSpan) / sliceSpan) % itemCount
+        for (index, arc) in arcs.enumerated() where normalized(angle - arc.start) < arc.span {
+            return index
+        }
+        return nil
+    }
+
+    /// Arc table for an app's window sub-wheel (US-016): each window slice is as wide
+    /// as an app slice and fans clockwise from the parent app, so the sub-wheel reads
+    /// as an extension of the app being pointed at instead of re-dividing the circle.
+    ///
+    /// - `windowCount <= appCount`: each window gets a full app-arc starting at the
+    ///   parent's leading edge; window 0 sits over the parent. Any leftover app-arcs
+    ///   get no slice (an uncovered gap — `hitTest` returns `nil` there).
+    /// - `windowCount > appCount` (overflow fisheye): the focused window keeps a full
+    ///   app-arc and the rest compress equally to share the remaining circle, laid out
+    ///   clockwise in node order so the focused slice bulges in place.
+    /// - `appCount <= 1` (no context arc to share) or a vanishing compressed span:
+    ///   fall back to equal division so no slice is zero-width.
+    static func windowRing(
+        windowCount: Int,
+        appCount: Int,
+        parentIndex: Int,
+        focusedWindowIndex: Int?,
+        geometry: RadialGeometry = .default
+    ) -> RadialLayout {
+        let twoPi = 2 * CGFloat.pi
+        guard windowCount > 0 else { return RadialLayout(arcs: [], geometry: geometry) }
+        guard appCount > 1 else { return RadialLayout(itemCount: windowCount, geometry: geometry) }
+
+        let appArc = twoPi / CGFloat(appCount)
+        let anchorStart = CGFloat(parentIndex) * appArc - appArc / 2
+
+        if windowCount <= appCount {
+            let arcs = (0..<windowCount).map {
+                SliceArc(start: anchorStart + CGFloat($0) * appArc, span: appArc)
+            }
+            return RadialLayout(arcs: arcs, geometry: geometry)
+        }
+
+        let compressed = (twoPi - appArc) / CGFloat(windowCount - 1)
+        guard compressed > 1e-9 else { return RadialLayout(itemCount: windowCount, geometry: geometry) }
+
+        let focus = min(max(focusedWindowIndex ?? 0, 0), windowCount - 1)
+        var arcs: [SliceArc] = []
+        var cursor = anchorStart
+        for slot in 0..<windowCount {
+            let span = slot == focus ? appArc : compressed
+            arcs.append(SliceArc(start: cursor, span: span))
+            cursor += span
+        }
+        return RadialLayout(arcs: arcs, geometry: geometry)
     }
 
     /// Wraps `angle` into `[0, 2π)`.
@@ -85,6 +163,13 @@ struct RadialLayout: Equatable, Sendable {
         let twoPi = 2 * CGFloat.pi
         let remainder = angle.truncatingRemainder(dividingBy: twoPi)
         return remainder < 0 ? remainder + twoPi : remainder
+    }
+
+    /// Bounds-safe arc lookup: a zero-span arc for an out-of-range index, so the
+    /// angle accessors never trap if a caller's index outruns the table.
+    private func arc(at index: Int) -> SliceArc {
+        guard index >= 0, index < arcs.count else { return SliceArc(start: 0, span: 0) }
+        return arcs[index]
     }
 }
 

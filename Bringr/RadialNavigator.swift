@@ -10,12 +10,17 @@ enum HoverRegion: Equatable, Sendable {
 }
 
 /// One concentric ring of the wheel: the menu nodes shown at a given depth, paired
-/// with the ring band they occupy. Level 0 is the apps ring; level 1 is the
-/// hovered app's windows sub-wheel (US-010).
+/// with the ring band they occupy and the angular layout that places them. Level 0
+/// is the apps ring; level 1 is the hovered app's windows sub-wheel (US-010).
+///
+/// The `layout` is computed once when the ring is built and shared by both rendering
+/// (`RadialRingView`) and hit-testing (`RadialNavigator.region`), so the two can
+/// never desync — the load-bearing invariant for the uneven US-016 sub-wheel.
 struct RadialRing: Identifiable {
     let level: Int
     let geometry: RadialGeometry
     let nodes: [MenuNode]
+    let layout: RadialLayout
 
     var id: Int { level }
 }
@@ -53,6 +58,11 @@ final class RadialNavigator {
     /// window is isolated. Drives window re-isolation (hovering the same window is
     /// a no-op) and the un-isolate when the cursor leaves the windows ring.
     private(set) var expandedWindowIndex: Int?
+    /// In an overflow window sub-wheel (more windows than apps), the index of the
+    /// window currently magnified to a full app-arc (the US-016 fisheye focus), or
+    /// `nil` when there is no overflow — i.e. every window slice is already a full
+    /// app-arc and focus has no geometric effect.
+    private(set) var focusedWindowIndex: Int?
     /// The window slice to pre-highlight — the app's remembered last selection —
     /// while its sub-wheel is open, or `.none` when nothing is remembered. Distinct
     /// from `hovered`: it suggests a choice before the cursor reaches it. (US-012 AC4)
@@ -116,9 +126,12 @@ final class RadialNavigator {
 
     /// Begin a summon: show the apps ring, nothing expanded, nothing revealed.
     func open(appNodes: [MenuNode]) {
-        rings = [RadialRing(level: 0, geometry: ringGeometry(forLevel: 0), nodes: appNodes)]
+        let geometry = ringGeometry(forLevel: 0)
+        let layout = RadialLayout(itemCount: appNodes.count, geometry: geometry)
+        rings = [RadialRing(level: 0, geometry: geometry, nodes: appNodes, layout: layout)]
         expandedAppIndex = nil
         expandedWindowIndex = nil
+        focusedWindowIndex = nil
         hovered = .none
         prehighlighted = .none
     }
@@ -134,6 +147,7 @@ final class RadialNavigator {
         rings = []
         expandedAppIndex = nil
         expandedWindowIndex = nil
+        focusedWindowIndex = nil
         hovered = .none
         prehighlighted = .none
     }
@@ -141,16 +155,26 @@ final class RadialNavigator {
     // MARK: - Hit-testing
 
     /// Map a cursor `offset` (from the ring centre, +x right / +y down) to the
-    /// region it falls in. Rings are checked innermost-first; their bands touch, so
-    /// at most one matches.
+    /// region it falls in, using each ring's own shared layout. Rings are checked
+    /// innermost-first; their bands touch, so at most one slice matches.
+    ///
+    /// A cursor inside a ring's radial band but over an uncovered angular gap (an
+    /// empty outer sector of a partially-filled US-016 window ring) is a no-op: it
+    /// returns the current `hovered` region so the sub-wheel stays open, rather than
+    /// `.none` which would collapse it. Only the dead centre or a point outside every
+    /// band — neither of which is in any ring's band — returns `.none`.
     func region(forOffset offset: CGPoint) -> HoverRegion {
+        let distance = hypot(offset.x, offset.y)
+        var withinARingBand = false
         for ring in rings {
-            let layout = RadialLayout(itemCount: ring.nodes.count, geometry: ring.geometry)
-            if let index = layout.hitTest(offset) {
+            if let index = ring.layout.hitTest(offset) {
                 return .slice(level: ring.level, index: index)
             }
+            if distance >= ring.geometry.innerRadius, distance <= ring.geometry.outerRadius {
+                withinARingBand = true
+            }
         }
-        return .none
+        return withinARingBand ? hovered : .none
     }
 
     // MARK: - Hover
@@ -169,6 +193,7 @@ final class RadialNavigator {
             expandApp(at: index)
         case .slice(level: 1, let index):
             isolateWindow(at: index)
+            focusWindowSlice(at: index)
         case .slice:
             break
         case .none:
@@ -234,10 +259,44 @@ final class RadialNavigator {
             windowControl.revealApp(appID)
         }
         let windowNodes = appNode.resolvedChildren()
-        let subRing = RadialRing(level: 1, geometry: ringGeometry(forLevel: 1), nodes: windowNodes)
-        rings = [appsRing, subRing]
+        let appCount = appsRing.nodes.count
+        // Overflow (US-016 fisheye) only when there are genuinely more windows than
+        // app-arcs to lay them on; with a single app there is no context arc, so the
+        // ring falls back to equal division and focus has no effect.
+        let overflow = windowNodes.count > appCount && appCount > 1
+        let focus: Int? = overflow ? 0 : nil
+        rings = [appsRing, makeWindowRing(windowNodes: windowNodes, parentIndex: index, focus: focus)]
         expandedAppIndex = index
+        focusedWindowIndex = focus
         prehighlighted = prehighlightRegion(forAppNamed: appNode.title, windowNodes: windowNodes)
+    }
+
+    /// Build the level-1 windows ring for `windowNodes`, fanning out clockwise from
+    /// the parent app at `parentIndex` with the US-016 app-aligned / fisheye layout.
+    private func makeWindowRing(windowNodes: [MenuNode], parentIndex: Int, focus: Int?) -> RadialRing {
+        let geometry = ringGeometry(forLevel: 1)
+        let layout = RadialLayout.windowRing(
+            windowCount: windowNodes.count,
+            appCount: rings.first?.nodes.count ?? 0,
+            parentIndex: parentIndex,
+            focusedWindowIndex: focus,
+            geometry: geometry
+        )
+        return RadialRing(level: 1, geometry: geometry, nodes: windowNodes, layout: layout)
+    }
+
+    /// Move the overflow fisheye focus to the window slice at `index`: the focused
+    /// window grows to a full app-arc and the rest re-compress, live on hover. A no-op
+    /// when there is no overflow (focus is `nil` and every slice is already full
+    /// width) or when `index` is already focused, so it costs nothing per hover.
+    private func focusWindowSlice(at index: Int) {
+        guard rings.count > 1, focusedWindowIndex != nil, focusedWindowIndex != index else { return }
+        let windowsRing = rings[1]
+        guard index >= 0, index < windowsRing.nodes.count else { return }
+        focusedWindowIndex = index
+        rings[1] = makeWindowRing(
+            windowNodes: windowsRing.nodes, parentIndex: expandedAppIndex ?? 0, focus: index
+        )
     }
 
     /// The window slice to pre-highlight for the app named `appName`, matching its
@@ -284,6 +343,7 @@ final class RadialNavigator {
         rings = Array(rings.prefix(1))
         expandedAppIndex = nil
         expandedWindowIndex = nil
+        focusedWindowIndex = nil
         prehighlighted = .none
     }
 

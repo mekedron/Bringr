@@ -43,7 +43,7 @@ struct RadialRingView: View {
     let appearance: RadialAppearance
 
     var body: some View {
-        let layout = RadialLayout(itemCount: ring.nodes.count, geometry: ring.geometry)
+        let layout = ring.layout
 
         ZStack {
             ForEach(Array(ring.nodes.enumerated()), id: \.element.id) { index, node in

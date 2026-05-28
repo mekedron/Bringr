@@ -154,6 +154,25 @@ final class RadialNavigatorCommitTests: XCTestCase {
         XCTAssertEqual(fixture.navigator.prehighlighted, .none)
     }
 
+    func testPreHighlightResolvesCorrectNodeIndexUnderFisheye() {
+        // Three Chrome windows over two apps overflow into a fisheye; the fisheye
+        // changes only slice geometry, never which node is slice i, so a remembered
+        // selection still pre-highlights the right window node.
+        let fixture = makeFixture(windows: [
+            raw(number: 11, pid: 10, name: "Chrome", title: "Inbox"),
+            raw(number: 12, pid: 10, name: "Chrome", title: "Docs"),
+            raw(number: 13, pid: 10, name: "Chrome", title: "Calendar"),
+            raw(number: 21, pid: 20, name: "Ghostty", title: "Terminal")
+        ])
+        fixture.store.remember(appName: "Chrome", title: "Calendar", index: 2)
+        fixture.navigator.open(appNodes: fixture.appNodes)
+
+        fixture.navigator.updateHover(.slice(level: 0, index: 0)) // Chrome overflow
+
+        XCTAssertEqual(fixture.navigator.focusedWindowIndex, 0) // confirms a fisheye is active
+        XCTAssertEqual(fixture.navigator.prehighlighted, .slice(level: 1, index: 2))
+    }
+
     // MARK: - AC3 → AC4 end-to-end through one navigator
 
     func testCommittingTheRememberedWindowPreHighlightsItOnTheNextSummon() {
