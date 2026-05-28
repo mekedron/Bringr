@@ -14,6 +14,8 @@
 		1A0000000000000000000024 /* AppDelegate.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1A0000000000000000000023 /* AppDelegate.swift */; };
 		1A0000000000000000000026 /* PreferencesView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1A0000000000000000000025 /* PreferencesView.swift */; };
 		1A0000000000000000000028 /* PermissionsManagerTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1A0000000000000000000027 /* PermissionsManagerTests.swift */; };
+		1A000000000000000000002A /* WindowControl.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1A0000000000000000000029 /* WindowControl.swift */; };
+		1A000000000000000000002C /* WindowControlTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1A000000000000000000002B /* WindowControlTests.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -36,6 +38,8 @@
 		1A0000000000000000000023 /* AppDelegate.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppDelegate.swift; sourceTree = "<group>"; };
 		1A0000000000000000000025 /* PreferencesView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PreferencesView.swift; sourceTree = "<group>"; };
 		1A0000000000000000000027 /* PermissionsManagerTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PermissionsManagerTests.swift; sourceTree = "<group>"; };
+		1A0000000000000000000029 /* WindowControl.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WindowControl.swift; sourceTree = "<group>"; };
+		1A000000000000000000002B /* WindowControlTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WindowControlTests.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -82,6 +86,7 @@
 				1A0000000000000000000012 /* AboutView.swift */,
 				1A0000000000000000000025 /* PreferencesView.swift */,
 				1A0000000000000000000021 /* PermissionsManager.swift */,
+				1A0000000000000000000029 /* WindowControl.swift */,
 			);
 			path = Bringr;
 			sourceTree = "<group>";
@@ -91,6 +96,7 @@
 			children = (
 				1A0000000000000000000016 /* BringrTests.swift */,
 				1A0000000000000000000027 /* PermissionsManagerTests.swift */,
+				1A000000000000000000002B /* WindowControlTests.swift */,
 			);
 			path = BringrTests;
 			sourceTree = "<group>";
@@ -198,6 +204,7 @@
 				1A0000000000000000000013 /* AboutView.swift in Sources */,
 				1A0000000000000000000026 /* PreferencesView.swift in Sources */,
 				1A0000000000000000000022 /* PermissionsManager.swift in Sources */,
+				1A000000000000000000002A /* WindowControl.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -207,6 +214,7 @@
 			files = (
 				1A0000000000000000000017 /* BringrTests.swift in Sources */,
 				1A0000000000000000000028 /* PermissionsManagerTests.swift in Sources */,
+				1A000000000000000000002C /* WindowControlTests.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

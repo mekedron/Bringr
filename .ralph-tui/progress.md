@@ -32,6 +32,15 @@ after each iteration and it's included in prompts for context.
 ### Adding a Preferences/settings window
 - Mirror the existing About `Window` scene: `Window("Bringr Preferences", id: "preferences")` + a menu `Button` calling `openWindow(id: "preferences")` after `NSApp.activate(ignoringOtherApps: true)`. Works for `LSUIElement` apps. Later settings stories (US-009/013/014) add sections to `PreferencesView`, not new windows.
 
+### Window/app control behind an injectable seam (the US-004 pattern)
+- The PermissionsManager injectable-closure pattern generalizes to a **protocol seam** for anything that touches live system state. `WindowControlling` (a `@MainActor protocol`) is the seam: `WindowController` (orchestration) is unit-tested against an in-memory `FakeWindowSystem`; `LiveWindowSystem` (AX + NSRunningApplication) is the production conformer. Tests never construct `LiveWindowSystem`, so no AX calls / permission prompts during `xcodebuild test`.
+- **Identity types** for windows/apps: `AppID { pid }` and `WindowID { app; token }`, both `Hashable, Sendable`. `token` is opaque (live system uses enumeration index for now). US-003's enumeration service can refine `token` later — `WindowController` only relies on `Hashable`, so it's additive. Don't over-commit US-004 to an ID scheme US-003 owns.
+- **Capture-before-mutate / restore-to-baseline**: capture the pre-mutation state of the touched scope (app visibility+frontmost, or one app's window minimized-state+order) **exactly once per session** (guard flags: `didCaptureApps`, `windowBaseline[app] == nil`). `restore()` replays the captured baseline, NOT the inverse of each mutation — this is why re-targeting (hover app A → app B → A) restores correctly: incremental "undo what I did" breaks under re-targeting, baseline-replay doesn't. Restore order: unhide apps → un-minimize + re-raise windows (back-to-front so original front ends on top) → activate original frontmost last.
+- **Hiding one window**: AX has no "hide window"; `kAXMinimizedAttribute = true` is the only reversible per-window hide. `restore()` un-minimizes. (OS minimize animation is system behavior, unrelated to the PRD's "no wheel animations".)
+- **Live AX boilerplate that works under strict build** (no bridging header, no private API): app element via `AXUIElementCreateApplication(pid)`; windows via `AXUIElementCopyAttributeValue(_, kAXWindowsAttribute as CFString, &v)` then `v as? [AXUIElement]`; read bool attrs with `value as? Bool`; set bools with `kCFBooleanTrue/kCFBooleanFalse` (NOT `true as CFBoolean`); raise via `AXUIElementPerformAction(el, kAXRaiseAction as CFString)`; focus via setting `kAXMainAttribute` + `kAXFocusedAttribute`. kAX* constants import as `String`. AX symbols link with just `import ApplicationServices` (no explicit framework).
+- **Same @MainActor-default-arg gotcha as before, non-closure form**: `init(system: WindowControlling = LiveWindowSystem())` fails ("Call to main actor-isolated initializer in a synchronous nonisolated context"). Fix: `init(system: WindowControlling? = nil) { self.system = system ?? LiveWindowSystem() }` — construct inside the `@MainActor` init body.
+- **Verification limitation**: US-004 ships primitives with no runtime driver yet (no trigger/overlay until US-006/007/010), so "build & run verify visually" only confirms the app still launches stably with the new code linked. The live AX primitives get interactive verification when a trigger exists; orchestration is proven by the fake-backed tests now.
+
 ---
 
 ## 2026-05-28 - Bringr-93j.1 (US-001: lint and test tooling)
@@ -53,5 +62,14 @@ after each iteration and it's included in prompts for context.
 - Gates: build SUCCEEDED, swiftlint 0 violations, 8 tests pass. App launches stably (no crash) whether trusted or not.
 - **Verification caveat:** confirmed the app launches and stays alive via CLI; the menu → Preferences → Re-check click-through was NOT exercised interactively (needs GUI access). Geometry/logic is unit-tested; visual click-through is the one unverified slice.
 - **Learnings:** see the two new Codebase Patterns sections above (app lifecycle / @MainActor service concurrency / XCTest launch guard, and adding a Preferences window).
+---
+
+## 2026-05-28 - Bringr-93j.4 (US-004: Window control primitives)
+- Added `WindowControl.swift` (app target): identity types `AppID`/`WindowID`; `WindowControlling` `@MainActor` protocol (the seam); `WindowController` orchestrator with primitives `raiseAndFocus(_:)` (AC1), `hideOtherApps(besides:)` (AC2), `hideOtherWindows(besides:)` (AC3), per-scope capture-once baseline (AC4), and `restore()` replaying the baseline (AC5); `LiveWindowSystem` conformer over NSRunningApplication + Accessibility API.
+- Added `WindowControlTests.swift` (test target): in-memory `FakeWindowSystem` modeling app/window visibility + z-order, and 7 tests covering all 5 ACs incl. target reveal-then-restore (app + window) and restore-to-baseline-despite-re-targeting (proves capture-once).
+- Files changed: `Bringr/WindowControl.swift` (new), `BringrTests/WindowControlTests.swift` (new), `Bringr.xcodeproj/project.pbxproj` (IDs 0x29–0x2C).
+- Gates: build SUCCEEDED, swiftlint 0 violations, 15 tests pass (7 new). App launches stably with the new code linked.
+- Not wired into `AppDelegate` yet — nothing drives the primitives until a trigger/overlay (US-006/007/010); avoided an unused stored property. The protocol seam means a future enumeration service (US-003) or trigger can inject/drive it.
+- **Learnings:** see the new "Window/app control behind an injectable seam" Codebase Patterns section above.
 ---
 
