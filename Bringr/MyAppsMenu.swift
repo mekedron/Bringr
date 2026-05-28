@@ -13,6 +13,10 @@ import Foundation
 ///   bundle id, so committing starts/raises the app (Bringr-93j.39) and the slice still
 ///   shows the on-disk icon (Bringr-93j.38).
 ///
+/// The curated block keeps the user's manual order by default; when the "do not sort my
+/// custom list" checkbox is off (Bringr-93j.43), the active `AppSortOrder` reorders the
+/// curated apps too, exactly as it already orders the appended others.
+///
 /// When the "show all other running apps" toggle is on (the default, Bringr-93j.42), the
 /// remaining running apps on the summon screen — those not already shown by a curated entry
 /// — follow the pinned block as the raw wheel's plain expand-to-windows nodes. When it is
@@ -35,11 +39,22 @@ struct MyAppsMenu: MenuDefinition {
     /// closure so each summon picks up the persisted toggle fresh (like `curatedApps`); tests
     /// inject a fixed value (Bringr-93j.42).
     private let showOtherRunningApps: () -> Bool
+    /// Whether the curated block keeps the user's manual order (Bringr-93j.43). When false,
+    /// the curated apps are reordered by `appSortOrder` like the appended others; read fresh
+    /// per summon through a closure so a Preferences change applies without a relaunch.
+    private let keepCuratedOrder: () -> Bool
+    /// The active apps sort order, used only when `keepCuratedOrder` is off to reorder the
+    /// curated block. Read through a closure (the live default matches the order the
+    /// `WindowEnumerator` already applies to `live`, so the two agree in production); tests
+    /// inject a fixed order.
+    private let appSortOrder: () -> AppSortOrder
 
     init(
         enumerator: WindowEnumerator,
         curatedApps: @escaping () -> [CuratedApp] = { CuratedApps.current() },
         showOtherRunningApps: @escaping () -> Bool = { CuratedApps.showsOtherRunningApps() },
+        keepCuratedOrder: @escaping () -> Bool = { CuratedApps.keepsCuratedOrder() },
+        appSortOrder: @escaping () -> AppSortOrder = { AppSortOrder.current() },
         runningPID: @escaping (String) -> pid_t? = {
             CuratedApp.runningApplication(forBundleIdentifier: $0)?.processIdentifier
         }
@@ -48,6 +63,8 @@ struct MyAppsMenu: MenuDefinition {
         self.fallback = WindowSwitcherMenu(enumerator: enumerator)
         self.curatedApps = curatedApps
         self.showOtherRunningApps = showOtherRunningApps
+        self.keepCuratedOrder = keepCuratedOrder
+        self.appSortOrder = appSortOrder
         self.runningPID = runningPID
     }
 
@@ -63,6 +80,8 @@ struct MyAppsMenu: MenuDefinition {
 
         let enumerator = self.enumerator
         let runningPID = self.runningPID
+        let keepCuratedOrder = self.keepCuratedOrder
+        let appSortOrder = self.appSortOrder
         // Capture `screenBounds` so the ring and every sub-wheel stay locked to the summon
         // display (Bringr-93j.30), matching the raw wheel.
         return MenuNode(
@@ -71,7 +90,12 @@ struct MyAppsMenu: MenuDefinition {
             action: .expand,
             children: .dynamic {
                 let live = enumerator.enumerate(onScreen: screenBounds)
-                let curatedNodes = curated.map {
+                // Keep the manual order (the default), or let the active Apps sort order
+                // reorder the curated block when the user turned that off (Bringr-93j.43).
+                let orderedCurated = keepCuratedOrder()
+                    ? curated
+                    : Self.ordered(curated, live: live, runningPID: runningPID, by: appSortOrder())
+                let curatedNodes = orderedCurated.map {
                     Self.node(
                         for: $0, live: live, onScreen: screenBounds,
                         enumerator: enumerator, runningPID: runningPID
@@ -114,5 +138,40 @@ struct MyAppsMenu: MenuDefinition {
             action: .launchApp(bundleIdentifier: app.bundleIdentifier),
             bundleIdentifier: app.bundleIdentifier
         )
+    }
+
+    /// Reorder the curated entries by the active Apps sort order, for when the user turned
+    /// the "do not sort my custom list" checkbox off (Bringr-93j.43). `.name` sorts every
+    /// entry alphabetically — the only key a not-running app has. `.recentlyUsed` follows the
+    /// front-to-back order the screen-scoped enumeration already imposes: each running entry
+    /// takes its position in `live`, and entries with no window on this screen (not running,
+    /// or running on another display — no `live` position) fall to the end. Both branches
+    /// break ties by the entry's original index, so the sort is stable and equal keys keep
+    /// the user's manual arrangement.
+    private static func ordered(
+        _ curated: [CuratedApp], live: [AppWindows], runningPID: (String) -> pid_t?,
+        by order: AppSortOrder
+    ) -> [CuratedApp] {
+        switch order {
+        case .name:
+            return curated.enumerated().sorted { lhs, rhs in
+                switch lhs.element.name.localizedCaseInsensitiveCompare(rhs.element.name) {
+                case .orderedAscending: return true
+                case .orderedDescending: return false
+                case .orderedSame: return lhs.offset < rhs.offset
+                }
+            }.map(\.element)
+        case .recentlyUsed:
+            let position = Dictionary(uniqueKeysWithValues: live.enumerated().map { ($1.id.pid, $0) })
+            func rank(_ app: CuratedApp) -> Int {
+                guard let pid = runningPID(app.bundleIdentifier) else { return Int.max }
+                return position[pid] ?? Int.max
+            }
+            return curated.enumerated().sorted { lhs, rhs in
+                let lhsRank = rank(lhs.element)
+                let rhsRank = rank(rhs.element)
+                return lhsRank == rhsRank ? lhs.offset < rhs.offset : lhsRank < rhsRank
+            }.map(\.element)
+        }
     }
 }

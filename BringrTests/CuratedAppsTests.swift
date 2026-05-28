@@ -95,6 +95,32 @@ final class CuratedAppsTests: XCTestCase {
         XCTAssertEqual(CuratedApps.showOtherRunningAppsDefaultsKey, "myApps.showOtherRunningApps")
     }
 
+    // MARK: - "Do not sort my custom list" checkbox (Bringr-93j.43)
+
+    func testKeepsCuratedOrderDefaultsToTrueWhenUnset() {
+        XCTAssertTrue(CuratedApps.keepsCuratedOrder(from: makeDefaults()),
+                      "unset → ON, so the curated block keeps its manual order as it always has")
+    }
+
+    func testKeepsCuratedOrderReadsPersistedFalse() {
+        let defaults = makeDefaults()
+        defaults.set(false, forKey: CuratedApps.keepCuratedOrderDefaultsKey)
+
+        XCTAssertFalse(CuratedApps.keepsCuratedOrder(from: defaults),
+                       "an explicit false must survive — not be mistaken for the unset ON default")
+    }
+
+    func testKeepsCuratedOrderReadsPersistedTrue() {
+        let defaults = makeDefaults()
+        defaults.set(true, forKey: CuratedApps.keepCuratedOrderDefaultsKey)
+
+        XCTAssertTrue(CuratedApps.keepsCuratedOrder(from: defaults))
+    }
+
+    func testKeepCuratedOrderDefaultsKeyIsStable() {
+        XCTAssertEqual(CuratedApps.keepCuratedOrderDefaultsKey, "myApps.doNotSort")
+    }
+
     // MARK: - Resolution helpers (AC: known bundle id → bundle URL and running app)
 
     func testKnownBundleIdResolvesToABundleURL() throws {

@@ -61,6 +61,7 @@
 		1A0000000000000000000082 /* AppLauncher.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1A0000000000000000000081 /* AppLauncher.swift */; };
 		1A0000000000000000000086 /* MyAppsMenu.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1A0000000000000000000085 /* MyAppsMenu.swift */; };
 		1A0000000000000000000088 /* MyAppsMenuTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1A0000000000000000000087 /* MyAppsMenuTests.swift */; };
+		1A000000000000000000008A /* MyAppsMenuSortingTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1A0000000000000000000089 /* MyAppsMenuSortingTests.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -130,6 +131,7 @@
 		1A0000000000000000000081 /* AppLauncher.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppLauncher.swift; sourceTree = "<group>"; };
 		1A0000000000000000000085 /* MyAppsMenu.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MyAppsMenu.swift; sourceTree = "<group>"; };
 		1A0000000000000000000087 /* MyAppsMenuTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MyAppsMenuTests.swift; sourceTree = "<group>"; };
+		1A0000000000000000000089 /* MyAppsMenuSortingTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MyAppsMenuSortingTests.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -232,6 +234,7 @@
 				1A000000000000000000007D /* CuratedAppsTests.swift */,
 				1A0000000000000000000083 /* RadialNavigatorLaunchTests.swift */,
 				1A0000000000000000000087 /* MyAppsMenuTests.swift */,
+				1A0000000000000000000089 /* MyAppsMenuSortingTests.swift */,
 			);
 			path = BringrTests;
 			sourceTree = "<group>";
@@ -395,6 +398,7 @@
 				1A000000000000000000007E /* CuratedAppsTests.swift in Sources */,
 				1A0000000000000000000084 /* RadialNavigatorLaunchTests.swift in Sources */,
 				1A0000000000000000000088 /* MyAppsMenuTests.swift in Sources */,
+				1A000000000000000000008A /* MyAppsMenuSortingTests.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

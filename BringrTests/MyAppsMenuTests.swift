@@ -15,7 +15,8 @@ final class MyAppsMenuTests: XCTestCase {
         let enumerator = makeEnumerator(source)
         let curated = MyAppsMenu(
             enumerator: enumerator, curatedApps: { [] },
-            showOtherRunningApps: { true }, runningPID: { _ in nil }
+            showOtherRunningApps: { true },
+            keepCuratedOrder: { true }, runningPID: { _ in nil }
         )
 
         let rawWheel = WindowSwitcherMenu(enumerator: enumerator).makeRoot().resolvedChildren()
@@ -41,6 +42,7 @@ final class MyAppsMenuTests: XCTestCase {
             enumerator: makeEnumerator(source),
             curatedApps: { curated },
             showOtherRunningApps: { false },
+            keepCuratedOrder: { true },
             runningPID: { $0 == "com.google.Chrome" ? 10 : nil }
         )
 
@@ -72,6 +74,7 @@ final class MyAppsMenuTests: XCTestCase {
             enumerator: makeEnumerator(source),
             curatedApps: { [CuratedApp(bundleIdentifier: "com.google.Chrome", name: "Chrome")] },
             showOtherRunningApps: { false },
+            keepCuratedOrder: { true },
             runningPID: { $0 == "com.google.Chrome" ? 10 : nil }
         )
 
@@ -88,6 +91,7 @@ final class MyAppsMenuTests: XCTestCase {
             enumerator: makeEnumerator(source),
             curatedApps: { [CuratedApp(bundleIdentifier: "com.google.Chrome", name: "Chrome")] },
             showOtherRunningApps: { false },
+            keepCuratedOrder: { true },
             runningPID: { _ in 10 }                         // Chrome IS running...
         )
 
@@ -105,6 +109,7 @@ final class MyAppsMenuTests: XCTestCase {
             enumerator: makeEnumerator(source),
             curatedApps: { [CuratedApp(bundleIdentifier: "com.google.Chrome", name: "Chrome")] },
             showOtherRunningApps: { false },
+            keepCuratedOrder: { true },
             runningPID: { _ in chromePID }
         )
         let root = menu.makeRoot()
@@ -133,6 +138,7 @@ final class MyAppsMenuTests: XCTestCase {
             enumerator: makeEnumerator(source),
             curatedApps: { [CuratedApp(bundleIdentifier: "com.google.Chrome", name: "Chrome")] },
             showOtherRunningApps: { true },
+            keepCuratedOrder: { true },
             runningPID: { $0 == "com.google.Chrome" ? 10 : nil }
         )
 
@@ -155,6 +161,7 @@ final class MyAppsMenuTests: XCTestCase {
             enumerator: makeEnumerator(source),
             curatedApps: { [CuratedApp(bundleIdentifier: "com.google.Chrome", name: "Chrome")] },
             showOtherRunningApps: { true },
+            keepCuratedOrder: { true },
             runningPID: { $0 == "com.google.Chrome" ? 10 : nil }
         )
 
@@ -172,6 +179,7 @@ final class MyAppsMenuTests: XCTestCase {
             enumerator: makeEnumerator(source),
             curatedApps: { [] },
             showOtherRunningApps: { false },
+            keepCuratedOrder: { true },
             runningPID: { _ in nil }
         )
 

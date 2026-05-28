@@ -25,6 +25,12 @@ struct PreferencesView: View {
     /// next open without a relaunch.
     @AppStorage(AppSortOrder.defaultsKey) private var appSortOrderRaw = AppSortOrder.default.rawValue
     @AppStorage(WindowSortOrder.defaultsKey) private var windowSortOrderRaw = WindowSortOrder.default.rawValue
+    /// Whether the curated "My Apps" block keeps its manual order regardless of the Apps
+    /// sort order (Bringr-93j.43). `MyAppsMenu` reads the same key via
+    /// `CuratedApps.keepsCuratedOrder` fresh at each summon, so a change applies on the next
+    /// open without a relaunch.
+    @AppStorage(CuratedApps.keepCuratedOrderDefaultsKey)
+    private var keepCuratedOrder = CuratedApps.keepCuratedOrderDefault
     /// Whether the wheel appends the other running apps after the curated block
     /// (Bringr-93j.42). `MyAppsMenu` reads the same key via `CuratedApps.showsOtherRunningApps`
     /// fresh at each summon, so a change here applies on the next open without a relaunch.
@@ -233,6 +239,17 @@ struct PreferencesView: View {
                 .pickerStyle(.radioGroup)
 
                 Text((WindowSortOrder(rawValue: windowSortOrderRaw) ?? .default).detail)
+                    .font(.callout)
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+
+            VStack(alignment: .leading, spacing: 8) {
+                Toggle("Don't sort my pinned apps", isOn: $keepCuratedOrder)
+
+                Text("Keep the apps you pinned in My Apps in the order you arranged them, "
+                     + "ignoring the Apps sort order above. The other running apps are still "
+                     + "sorted by it.")
                     .font(.callout)
                     .foregroundStyle(.secondary)
                     .fixedSize(horizontal: false, vertical: true)

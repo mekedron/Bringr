@@ -125,6 +125,31 @@ enum CuratedApps {
         return defaults.bool(forKey: showOtherRunningAppsDefaultsKey)
     }
 
+    /// `UserDefaults` key backing the "do not sort my custom list" checkbox (Bringr-93j.43).
+    /// Single source of truth shared by the Preferences `@AppStorage` and
+    /// `keepsCuratedOrder(from:)`, so the two cannot drift.
+    static let keepCuratedOrderDefaultsKey = "myApps.doNotSort"
+
+    /// Default for the checkbox: ON — the curated apps keep the manual order the user
+    /// arranged in the editor, regardless of the active `AppSortOrder`. This matches the
+    /// behavior before the checkbox existed (the curated block was always in manual order),
+    /// so an existing user sees no reordering.
+    static let keepCuratedOrderDefault = true
+
+    /// Whether the curated apps keep their manual order regardless of the active
+    /// `AppSortOrder` (Bringr-93j.43). When true (the default), only the appended other
+    /// running apps are sorted; when false, the Apps sort order may reorder the curated
+    /// block too. Read fresh at each summon, so a Preferences change applies on the next
+    /// open without a relaunch. Falls back to the ON default when unset — `bool(forKey:)`
+    /// alone returns `false` for an absent key, which would silently flip the intended
+    /// default, so the unset case is checked explicitly (mirroring `showsOtherRunningApps`).
+    static func keepsCuratedOrder(from defaults: UserDefaults = .standard) -> Bool {
+        guard defaults.object(forKey: keepCuratedOrderDefaultsKey) != nil else {
+            return keepCuratedOrderDefault
+        }
+        return defaults.bool(forKey: keepCuratedOrderDefaultsKey)
+    }
+
     /// Merge bundles picked or dropped into the editor (Bringr-93j.40) onto an existing
     /// list, appending in drop order only those whose bundle id isn't already listed — so
     /// re-adding an app is a no-op and the user's manual order is preserved. URLs that
