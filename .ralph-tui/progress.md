@@ -21,6 +21,17 @@ after each iteration and it's included in prompts for context.
 - Lint: `swiftlint lint --strict` (binary from `brew install swiftlint`; config `.swiftlint.yml` uses `included: [Bringr, BringrTests]` so it never scans `build/`). `--strict` turns warnings into failures.
 - Test: `xcodebuild test -project Bringr.xcodeproj -scheme Bringr -destination 'platform=macOS'`
 
+### App lifecycle, @MainActor services, and launch bootstrap
+- `AppDelegate` (`Bringr/AppDelegate.swift`) is the launch-time bootstrap home, wired via `@NSApplicationDelegateAdaptor(AppDelegate.self)` in `BringrApp`. It owns app-lifetime services and is where future overlay pre-warm (US-006) and event taps (US-007/008) belong. There is no clean pure-SwiftUI "on launch once" hook for a MenuBarExtra-only app.
+- **Concurrency gotcha:** a `@MainActor` `ObservableObject` service cannot be a default-initialized stored property of a *non*-isolated `NSObject` (its init is main-actor isolated). Fix: mark the owning `AppDelegate` `@MainActor` too. App delegates run on the main actor anyway.
+- **Concurrency gotcha:** static helpers used as **default closure arguments** (`init(probe: () -> Bool = Self.systemFoo)`) must be `nonisolated`, else "Converting `@MainActor () -> X` ... loses global actor" (warning in Swift 5, error in Swift 6).
+- **Testability seam:** wrap live system calls (`AXIsProcessTrusted`, prompts, `NSWorkspace.open`) in injectable closures with live-impl defaults. Tests construct the service with fixture closures — no real permission state, no system dialogs. See `PermissionsManager`.
+- **XCTest launch guard (the US-001 gotcha, now concrete):** `AppDelegate.applicationDidFinishLaunching` early-returns when `ProcessInfo.processInfo.environment["XCTestConfigurationFilePath"] != nil`. `xcodebuild test` launches Bringr.app to host the bundle; without this guard the launch-time AX prompt pops a system dialog / hangs the run. Reuse this exact guard for the event tap (US-007) and multitouch observer (US-008).
+- **Sharing a service across AppDelegate + SwiftUI scenes:** the delegate creates the instance; scenes read it via `appDelegate.permissions` and inject with `.environmentObject(...)` (or pass to a `@ObservedObject` init param, as `MenuContent` does). One instance, observed live.
+
+### Adding a Preferences/settings window
+- Mirror the existing About `Window` scene: `Window("Bringr Preferences", id: "preferences")` + a menu `Button` calling `openWindow(id: "preferences")` after `NSApp.activate(ignoringOtherApps: true)`. Works for `LSUIElement` apps. Later settings stories (US-009/013/014) add sections to `PreferencesView`, not new windows.
+
 ---
 
 ## 2026-05-28 - Bringr-93j.1 (US-001: lint and test tooling)
@@ -31,5 +42,16 @@ after each iteration and it's included in prompts for context.
 - Files changed: `Bringr.xcodeproj/project.pbxproj`, `Bringr.xcodeproj/xcshareddata/xcschemes/Bringr.xcscheme`, `BringrTests/BringrTests.swift` (new), `.swiftlint.yml` (new), `README.md`.
 - All three gates pass: build SUCCEEDED, swiftlint 0 violations, 1 test passed.
 - **Learnings:** see Codebase Patterns above — hand-written pbxproj editing, host-based test target, `@testable` visibility caveat, and the future event-tap-under-XCTest gotcha.
+---
+
+## 2026-05-28 - Bringr-93j.2 (US-002: Accessibility permission bootstrap)
+- Added `PermissionsManager` (`@MainActor ObservableObject`): reads `AXIsProcessTrusted()` via an injectable `probe`, plus injectable `promptForAccess` (`AXIsProcessTrustedWithOptions` system dialog) and `openSettings` (opens `x-apple.systempreferences:...?Privacy_Accessibility`). Exposes `isTrusted`, `status` (`PermissionStatus` enum → title/detail/symbol), `recheck()`, and `startMonitoring()`/`stopMonitoring()` (DistributedNotificationCenter `com.apple.accessibility.api` + 1s poll → AC #5 live pickup).
+- Added `AppDelegate` (wired via `@NSApplicationDelegateAdaptor`): on launch checks trust, prompts if untrusted, starts monitoring — all guarded out under XCTest.
+- Added `PreferencesView` (new `Window` scene + "Preferences…" menu item, ⌘,): shows status + "Re-check" + "Open System Settings". `MenuContent` now shows a "Grant Accessibility Access…" warning item while untrusted.
+- 7 unit tests in `PermissionsManagerTests` (status mapping, recheck pickup, prompt/openSettings invocation, message presence). All 8 tests pass.
+- Files changed: `Bringr/PermissionsManager.swift` (new), `Bringr/AppDelegate.swift` (new), `Bringr/PreferencesView.swift` (new), `Bringr/BringrApp.swift`, `BringrTests/PermissionsManagerTests.swift` (new), `Bringr.xcodeproj/project.pbxproj` (IDs 0x21–0x28).
+- Gates: build SUCCEEDED, swiftlint 0 violations, 8 tests pass. App launches stably (no crash) whether trusted or not.
+- **Verification caveat:** confirmed the app launches and stays alive via CLI; the menu → Preferences → Re-check click-through was NOT exercised interactively (needs GUI access). Geometry/logic is unit-tested; visual click-through is the one unverified slice.
+- **Learnings:** see the two new Codebase Patterns sections above (app lifecycle / @MainActor service concurrency / XCTest launch guard, and adding a Preferences window).
 ---
 

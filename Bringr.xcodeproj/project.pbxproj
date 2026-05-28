@@ -10,6 +10,10 @@
 		1A0000000000000000000011 /* BringrApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1A0000000000000000000010 /* BringrApp.swift */; };
 		1A0000000000000000000013 /* AboutView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1A0000000000000000000012 /* AboutView.swift */; };
 		1A0000000000000000000017 /* BringrTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1A0000000000000000000016 /* BringrTests.swift */; };
+		1A0000000000000000000022 /* PermissionsManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1A0000000000000000000021 /* PermissionsManager.swift */; };
+		1A0000000000000000000024 /* AppDelegate.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1A0000000000000000000023 /* AppDelegate.swift */; };
+		1A0000000000000000000026 /* PreferencesView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1A0000000000000000000025 /* PreferencesView.swift */; };
+		1A0000000000000000000028 /* PermissionsManagerTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1A0000000000000000000027 /* PermissionsManagerTests.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -28,6 +32,10 @@
 		1A0000000000000000000012 /* AboutView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AboutView.swift; sourceTree = "<group>"; };
 		1A0000000000000000000014 /* BringrTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = BringrTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		1A0000000000000000000016 /* BringrTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BringrTests.swift; sourceTree = "<group>"; };
+		1A0000000000000000000021 /* PermissionsManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PermissionsManager.swift; sourceTree = "<group>"; };
+		1A0000000000000000000023 /* AppDelegate.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppDelegate.swift; sourceTree = "<group>"; };
+		1A0000000000000000000025 /* PreferencesView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PreferencesView.swift; sourceTree = "<group>"; };
+		1A0000000000000000000027 /* PermissionsManagerTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PermissionsManagerTests.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -70,7 +78,10 @@
 			isa = PBXGroup;
 			children = (
 				1A0000000000000000000010 /* BringrApp.swift */,
+				1A0000000000000000000023 /* AppDelegate.swift */,
 				1A0000000000000000000012 /* AboutView.swift */,
+				1A0000000000000000000025 /* PreferencesView.swift */,
+				1A0000000000000000000021 /* PermissionsManager.swift */,
 			);
 			path = Bringr;
 			sourceTree = "<group>";
@@ -79,6 +90,7 @@
 			isa = PBXGroup;
 			children = (
 				1A0000000000000000000016 /* BringrTests.swift */,
+				1A0000000000000000000027 /* PermissionsManagerTests.swift */,
 			);
 			path = BringrTests;
 			sourceTree = "<group>";
@@ -182,7 +194,10 @@
 			buildActionMask = 2147483647;
 			files = (
 				1A0000000000000000000011 /* BringrApp.swift in Sources */,
+				1A0000000000000000000024 /* AppDelegate.swift in Sources */,
 				1A0000000000000000000013 /* AboutView.swift in Sources */,
+				1A0000000000000000000026 /* PreferencesView.swift in Sources */,
+				1A0000000000000000000022 /* PermissionsManager.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -191,6 +206,7 @@
 			buildActionMask = 2147483647;
 			files = (
 				1A0000000000000000000017 /* BringrTests.swift in Sources */,
+				1A0000000000000000000028 /* PermissionsManagerTests.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

@@ -2,9 +2,11 @@ import SwiftUI
 
 @main
 struct BringrApp: App {
+    @NSApplicationDelegateAdaptor(AppDelegate.self) private var appDelegate
+
     var body: some Scene {
         MenuBarExtra {
-            MenuContent()
+            MenuContent(permissions: appDelegate.permissions)
         } label: {
             Image(systemName: "circle.hexagongrid")
         }
@@ -15,21 +17,50 @@ struct BringrApp: App {
         }
         .windowResizability(.contentSize)
         .defaultPosition(.center)
+
+        Window("Bringr Preferences", id: "preferences") {
+            PreferencesView()
+                .environmentObject(appDelegate.permissions)
+        }
+        .windowResizability(.contentSize)
+        .defaultPosition(.center)
     }
 }
 
 private struct MenuContent: View {
+    @ObservedObject var permissions: PermissionsManager
     @Environment(\.openWindow) private var openWindow
 
     var body: some View {
+        if !permissions.isTrusted {
+            Button {
+                openPreferences()
+            } label: {
+                Label("Grant Accessibility Access…", systemImage: "exclamationmark.triangle.fill")
+            }
+            Divider()
+        }
+
+        Button("Preferences…") {
+            openPreferences()
+        }
+        .keyboardShortcut(",")
+
         Button("About Bringr") {
             NSApp.activate(ignoringOtherApps: true)
             openWindow(id: "about")
         }
+
         Divider()
+
         Button("Quit Bringr") {
             NSApplication.shared.terminate(nil)
         }
         .keyboardShortcut("q")
+    }
+
+    private func openPreferences() {
+        NSApp.activate(ignoringOtherApps: true)
+        openWindow(id: "preferences")
     }
 }

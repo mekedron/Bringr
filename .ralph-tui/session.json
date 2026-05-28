@@ -3,10 +3,10 @@
   "sessionId": "bf5be85f-d1fa-4dc4-8304-f09229dbce6c",
   "status": "running",
   "startedAt": "2026-05-28T11:08:26.939Z",
-  "updatedAt": "2026-05-28T11:16:41.391Z",
-  "currentIteration": 0,
+  "updatedAt": "2026-05-28T11:25:29.024Z",
+  "currentIteration": 1,
   "maxIterations": 0,
-  "tasksCompleted": 0,
+  "tasksCompleted": 1,
   "isPaused": false,
   "agentPlugin": "claude",
   "trackerState": {
@@ -32,8 +32,8 @@
       {
         "id": "Bringr-93j.1",
         "title": "US-001: Stand up lint and test tooling",
-        "status": "open",
-        "completedInSession": false
+        "status": "completed",
+        "completedInSession": true
       },
       {
         "id": "Bringr-93j.2",
@@ -121,7 +121,18 @@
       }
     ]
   },
-  "iterations": [],
+  "iterations": [
+    {
+      "iteration": 1,
+      "status": "completed",
+      "taskId": "Bringr-93j.1",
+      "taskTitle": "US-001: Stand up lint and test tooling",
+      "taskCompleted": true,
+      "durationMs": 456836,
+      "startedAt": "2026-05-28T11:09:03.759Z",
+      "endedAt": "2026-05-28T11:16:40.595Z"
+    }
+  ],
   "skippedTaskIds": [],
   "cwd": "/Users/nikita/Projects/Bringr",
   "activeTaskIds": [],

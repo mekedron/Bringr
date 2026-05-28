@@ -1,0 +1,163 @@
+# Iteration 1 Log
+
+## Metadata
+
+- **Task ID**: Bringr-93j.1
+- **Task Title**: US-001: Stand up lint and test tooling
+- **Description**: As a developer, I want SwiftLint and an XCTest target wired into the project so that the quality gates can run from story one.
+
+## Acceptance Criteria
+- [ ] A unit-test target is added to `Bringr.xcod...
+- **Status**: completed
+- **Task Completed**: Yes
+- **Promise Detected**: Yes
+- **Started At**: 2026-05-28T11:09:03.759Z
+- **Ended At**: 2026-05-28T11:16:40.595Z
+- **Duration**: 7m 36s
+- **Input Tokens**: 270
+- **Output Tokens**: 37626
+- **Total Tokens**: 37896
+- **Agent**: claude
+- **Model**: claude-opus-4-7
+- **Epic**: Bringr-93j
+- **Sandbox Mode**: auto
+- **Sandbox Network**: Enabled
+--- RAW OUTPUT ---
+I'll start by understanding the current state of the project, then set up the lint and test tooling.
+[94m[Read][0m [95m/Users/nikita/Projects/Bringr/.ralph-tui/progress.md[0m
+Let me explore the project structure.
+[94m[Bash][0m List project structure $ ls -la && echo "---BRINGR---" && ls -la Bringr/ && echo "---XCODEPROJ---" && ls -la Bringr.xcodeproj...
+Let me read the existing source files and project configuration.
+[94m[Read][0m [95m/Users/nikita/Projects/Bringr/Bringr/BringrApp.swift[0m
+[94m[Read][0m [95m/Users/nikita/Projects/Bringr/Bringr/AboutView.swift[0m
+[94m[Read][0m [95m/Users/nikita/Projects/Bringr/Bringr.xcodeproj/project.pbxproj[0m
+Now let me check the environment: SwiftLint availability, the scheme file, and the README.
+[94m[Bash][0m Check tooling availability $ ls -la Bringr.xcodeproj/xcshareddata/xcschemes/ 2>/dev/null
+SwiftLint isn't installed. Let me check installation options and read the remaining config files.
+[94m[Bash][0m Check brew/mint and read scheme $ cat Bringr.xcodeproj/xcshareddata/xcschemes/Bringr.xcscheme
+I have a clear picture. The `project.pbxproj` is hand-written with clean sequential IDs, SwiftLint isn't installed (brew is available), and the scheme has an empty `<Testables>` section. Let me start the SwiftLint install in the background and claim the bead.
+[94m[Bash][0m Install SwiftLint via Homebrew $ brew install swiftlint 2>&1 | tail -20
+[94m[Bash][0m Claim the bead and show details $ bd show Bringr-93j.1 --db /Users/nikita/Projects/Bringr/.beads/beads.db 2>&1 | head -30
+Bead claimed and SwiftLint install finished. Let me verify the install.
+[94m[Bash][0m Verify SwiftLint installation $ which swiftlint && swiftlint version
+SwiftLint 0.63.3 installed. Let me check the `.gitignore` and README to understand conventions before adding files.
+[94m[Read][0m [95m/Users/nikita/Projects/Bringr/.gitignore[0m
+[94m[Read][0m [95m/Users/nikita/Projects/Bringr/README.md[0m
+SwiftLint 0.63.3 is ready. Now let me create the `.swiftlint.yml` config and the sample test file.
+[94m[Write][0m [95m/Users/nikita/Projects/Bringr/.swiftlint.yml[0m "# SwiftLint configuration for Bringr.
+# Quality gate: `swiftlint lint --strict` must report zero violations.
+
+included:
+  - Bringr
+  - BringrTests
+
+excluded:
+  - build
+  - .build
+  - DerivedData
+
+opt_... (434 chars)"
+[94m[Write][0m [95m/Users/nikita/Projects/Bringr/BringrTests/BringrTests.swift[0m "import XCTest
+@testable import Bringr
+
+final class BringrTests: XCTestCase {
+    // Proves the XCTest target builds, links the app via `@testable import`,
+    // and runs — the foundation later storie... (302 chars)"
+Let me verify SwiftLint runs clean before touching the project file.
+[94m[Bash][0m Run SwiftLint strict on current source $ echo "EXIT=${PIPESTATUS[0]}"
+SwiftLint passes with 0 violations. The `XCTest` diagnostic is expected — the test file isn't in a target yet. Now let me wire up the test target in `project.pbxproj`. I'll edit each section carefully.
+[94m[Edit][0m [95m/Users/nikita/Projects/Bringr/Bringr.xcodeproj/project.pbxproj[0m edit: "		1A0000000000000000000011 /* BringrApp.swift in S..." → "		1A0000000000000000000011 /* BringrApp.swift in S..."
+[94m[Edit][0m [95m/Users/nikita/Projects/Bringr/Bringr.xcodeproj/project.pbxproj[0m edit: "		1A0000000000000000000012 /* AboutView.swift */ =..." → "		1A0000000000000000000012 /* AboutView.swift */ =..."
+[94m[Edit][0m [95m/Users/nikita/Projects/Bringr/Bringr.xcodeproj/project.pbxproj[0m edit: "		1A000000000000000000000F /* Frameworks */ = {
+		..." → "		1A000000000000000000000F /* Frameworks */ = {
+		..."
+[94m[Edit][0m [95m/Users/nikita/Projects/Bringr/Bringr.xcodeproj/project.pbxproj[0m edit: "		1A0000000000000000000002 = {
+			isa = PBXGroup;
+..." → "		1A0000000000000000000002 = {
+			isa = PBXGroup;
+..."
+[94m[Edit][0m [95m/Users/nikita/Projects/Bringr/Bringr.xcodeproj/project.pbxproj[0m edit: "		1A0000000000000000000004 /* Bringr */ = {
+			isa..." → "		1A0000000000000000000004 /* Bringr */ = {
+			isa..."
+[94m[Edit][0m [95m/Users/nikita/Projects/Bringr/Bringr.xcodeproj/project.pbxproj[0m edit: "			productReference = 1A0000000000000000000006 /* ..." → "			productReference = 1A0000000000000000000006 /* ..."
+[94m[Edit][0m [95m/Users/nikita/Projects/Bringr/Bringr.xcodeproj/project.pbxproj[0m edit: "				TargetAttributes = {
+					1A000000000000000000..." → "				TargetAttributes = {
+					1A000000000000000000..."
+[94m[Edit][0m [95m/Users/nikita/Projects/Bringr/Bringr.xcodeproj/project.pbxproj[0m edit: "			targets = (
+				1A0000000000000000000005 /* Bri..." → "			targets = (
+				1A0000000000000000000005 /* Bri..."
+[94m[Edit][0m [95m/Users/nikita/Projects/Bringr/Bringr.xcodeproj/project.pbxproj[0m edit: "		1A000000000000000000000E /* Resources */ = {
+			..." → "		1A000000000000000000000E /* Resources */ = {
+			..."
+[94m[Edit][0m [95m/Users/nikita/Projects/Bringr/Bringr.xcodeproj/project.pbxproj[0m edit: "		1A000000000000000000000D /* Sources */ = {
+			is..." → "		1A000000000000000000000D /* Sources */ = {
+			is..."
+[94m[Edit][0m [95m/Users/nikita/Projects/Bringr/Bringr.xcodeproj/project.pbxproj[0m edit: "/* End PBXSourcesBuildPhase section */
+
+/* Begin X..." → "/* End PBXSourcesBuildPhase section */
+
+/* Begin P..."
+Now the test target's build configurations.
+[94m[Edit][0m [95m/Users/nikita/Projects/Bringr/Bringr.xcodeproj/project.pbxproj[0m edit: "			name = Release;
+		};
+/* End XCBuildConfiguratio..." → "			name = Release;
+		};
+		1A000000000000000000001E..."
+Now the test target's configuration list.
+[94m[Edit][0m [95m/Users/nikita/Projects/Bringr/Bringr.xcodeproj/project.pbxproj[0m edit: "		1A0000000000000000000008 /* Build configuration ..." → "		1A0000000000000000000008 /* Build configuration ..."
+The project file is complete. Now let me wire the test target into the scheme's `<Testables>` and build entries.
+[94m[Edit][0m [95m/Users/nikita/Projects/Bringr/Bringr.xcodeproj/xcshareddata/xcschemes/Bringr.xcscheme[0m edit: "      <Testables>
+      </Testables>" → "      <Testables>
+         <TestableReference
+    ..."
+
+[91m[Error: <tool_use_error>File has not been read yet. Read it first before writing to it.</tool_use_error>][0m
+[94m[Read][0m [95m/Users/nikita/Projects/Bringr/Bringr.xcodeproj/xcshareddata/xcschemes/Bringr.xcscheme[0m
+[94m[Edit][0m [95m/Users/nikita/Projects/Bringr/Bringr.xcodeproj/xcshareddata/xcschemes/Bringr.xcscheme[0m edit: "      <Testables>
+      </Testables>" → "      <Testables>
+         <TestableReference
+    ..."
+Let me verify the project parses correctly and the test target is recognized.
+[94m[Bash][0m List project targets and schemes $ xcodebuild -list -project Bringr.xcodeproj 2>&1 | head -30
+Both targets are recognized. Now let me run the build gate.
+[94m[Bash][0m Run the build quality gate $ xcodebuild -project Bringr.xcodeproj -scheme Bringr -configuration Debug -derivedDataPath build buil...
+Build succeeded. Now the test gate — this builds the test target, launches the host app, and runs the test.
+[94m[Bash][0m Run the test quality gate $ xcodebuild test -project Bringr.xcodeproj -scheme Bringr -destination 'platform=macOS' 2>&1 | tail -...
+All three quality gates pass: build succeeded, SwiftLint clean, and the test ran (host app launched, `@testable import Bringr` compiled and executed). Let me clean up the lingering host process and document the gates in the README.
+[94m[Bash][0m Kill lingering Bringr test-host process $ pgrep -x Bringr && echo "still running" || echo "cleaned up"
+[94m[Edit][0m [95m/Users/nikita/Projects/Bringr/README.md[0m edit: "## Building
+
+```sh
+xcodebuild -project Bringr.xcod..." → "## Building
+
+```sh
+xcodebuild -project Bringr.xcod..."
+All gates verified. Let me do a final confirmation of SwiftLint and review what changed in git.
+[94m[Bash][0m Final SwiftLint check and git status $ git status --short
+All gates green. Now let me record patterns and learnings in `progress.md` for future iterations.
+[94m[Edit][0m [95m/Users/nikita/Projects/Bringr/.ralph-tui/progress.md[0m edit: "## Codebase Patterns (Study These First)
+
+*Add reu..." → "## Codebase Patterns (Study These First)
+
+### proj..."
+[94m[Edit][0m [95m/Users/nikita/Projects/Bringr/.ralph-tui/progress.md[0m edit: "### Quality gates (run all three before "done")
+- ..." → "### Quality gates (run all three before "done")
+- ..."
+Now let me close the bead.
+[94m[Bash][0m Close the bead $ documented quality gates in README. All three gates pass." 2>&1 | tail -10
+All acceptance criteria and quality gates are satisfied:
+
+- **Test target**: Added a host-based `BringrTests` XCTest target to `Bringr.xcodeproj` (hand-edited the pbxproj across all PBX sections, wired into the shared scheme's `<Testables>`). It contains one passing sample test that exercises `@testable import Bringr`.
+- **SwiftLint**: Installed via Homebrew (0.63.3) with a committed `.swiftlint.yml` scoped to `Bringr`/`BringrTests` so it never scans `build/`.
+- **Docs**: Added a "Quality gates" section to `README.md` with all three commands.
+
+All three gates pass:
+- `** BUILD SUCCEEDED **`
+- `swiftlint lint --strict` → 0 violations
+- `xcodebuild test` → `** TEST SUCCEEDED **`, 1 test passed
+
+Files changed: `Bringr.xcodeproj/project.pbxproj`, `Bringr.xcodeproj/.../Bringr.xcscheme`, `BringrTests/BringrTests.swift` (new), `.swiftlint.yml` (new), `README.md`, plus learnings recorded in `.ralph-tui/progress.md`. Bead `Bringr-93j.1` is closed; no commits created (left for the engine). Lingering test-host process cleaned up.
+
+A key note for downstream stories I captured in `progress.md`: the test target launches `Bringr.app` as its host, so once US-007/US-008 install global event taps at app launch, they must be guarded against running under XCTest (`XCTestConfigurationFilePath`) to avoid hangs or permission prompts during tests.
+
+<promise>COMPLETE</promise>
