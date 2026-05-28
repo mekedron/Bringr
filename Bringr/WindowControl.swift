@@ -110,18 +110,18 @@ final class WindowController {
         system.focusWindow(window)
     }
 
-    /// Commit `window` as the user's choice (US-012): first restore every app and
-    /// window moved out of the way to its pre-summon state (AC2), then make
-    /// `window` visible, raise it, and focus it so the chosen window ends up
-    /// frontmost and active (AC1).
+    /// Commit `window` as the user's choice (US-012): restore every other app and
+    /// window moved out of the way (AC2), then make `window` visible, raise it, and
+    /// focus it so it ends up frontmost and active (AC1).
     ///
-    /// Restoring before raising matters: `restore()` re-activates the prior
-    /// frontmost app last, so it must run *before* the raise/focus or it would
-    /// override the focus the user just asked for. The explicit un-minimize covers
-    /// the case where the chosen window was itself minimized before the summon —
-    /// the user picked it, so it should surface regardless of its prior state.
+    /// `restore` is told not to re-activate the prior frontmost app — that would
+    /// race the target's own activation and could leave the chosen window behind it.
+    /// Re-enumerating refreshes the AX element cache so a stale handle can't make
+    /// un-minimize/raise/focus silently no-op. The un-minimize surfaces a target
+    /// that was minimized before the summon.
     func commit(_ window: WindowID) {
-        restore()
+        restore(reactivatingFrontmost: false)
+        _ = system.windows(of: window.app)
         system.setMinimized(window, false)
         raiseAndFocus(window)
     }
@@ -171,7 +171,7 @@ final class WindowController {
     /// Restore every app/window touched this session to its pre-summon
     /// visibility and ordering, then end the session. Safe to call with no
     /// active session. (AC5)
-    func restore() {
+    func restore(reactivatingFrontmost: Bool = true) {
         guard let session else { return }
 
         // 1. App visibility first, so windows are operated on while their app is shown.
@@ -190,8 +190,9 @@ final class WindowController {
             }
         }
 
-        // 3. Frontmost app last, restoring app-level z-order and focus.
-        if let frontmost = session.frontmostBefore {
+        // 3. Frontmost app last (skipped on commit, which activates the chosen
+        //    window's app instead — a second activation here would race it).
+        if reactivatingFrontmost, let frontmost = session.frontmostBefore {
             system.activate(frontmost)
         }
 
@@ -332,6 +333,10 @@ final class LiveWindowSystem: WindowControlling {
     }
 
     func activate(_ app: AppID) {
+        // From an accessory app, NSRunningApplication.activate() alone doesn't
+        // reliably win cooperative activation on macOS 14+; setting kAXFrontmost on
+        // the app element brings it forward so the raised window isn't left behind.
+        setBool(AXUIElementCreateApplication(app.pid), kAXFrontmostAttribute, true)
         runningApplication(app)?.activate()
     }
 

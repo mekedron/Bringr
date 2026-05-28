@@ -3,10 +3,10 @@
   "sessionId": "599ac84a-aff5-492c-bdc6-1f8f1c332303",
   "status": "running",
   "startedAt": "2026-05-28T14:17:40.578Z",
-  "updatedAt": "2026-05-28T15:00:10.894Z",
-  "currentIteration": 2,
+  "updatedAt": "2026-05-28T15:10:09.850Z",
+  "currentIteration": 3,
   "maxIterations": 10,
-  "tasksCompleted": 2,
+  "tasksCompleted": 3,
   "isPaused": false,
   "agentPlugin": "claude",
   "trackerState": {
@@ -110,8 +110,8 @@
       {
         "id": "Bringr-93j.14",
         "title": "US-014: Appearance customization",
-        "status": "open",
-        "completedInSession": false
+        "status": "completed",
+        "completedInSession": true
       },
       {
         "id": "Bringr-toj",
@@ -153,6 +153,16 @@
       "durationMs": 900872,
       "startedAt": "2026-05-28T14:28:05.105Z",
       "endedAt": "2026-05-28T14:43:05.977Z"
+    },
+    {
+      "iteration": 3,
+      "status": "completed",
+      "taskId": "Bringr-93j.14",
+      "taskTitle": "US-014: Appearance customization",
+      "taskCompleted": true,
+      "durationMs": 1014378,
+      "startedAt": "2026-05-28T14:43:15.377Z",
+      "endedAt": "2026-05-28T15:00:09.755Z"
     }
   ],
   "skippedTaskIds": [],

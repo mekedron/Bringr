@@ -254,6 +254,36 @@ final class WindowControlTests: XCTestCase {
         XCTAssertEqual(fake.windows(of: appA).first, target)
     }
 
+    // MARK: - Bringr-93j.18 regression: commit ordering must not race or hit a stale cache
+
+    func testCommitActivatesOnlyTargetAppAndRefreshesItsWindowCache() {
+        let target = AppID(pid: 1)
+        let priorFrontmost = AppID(pid: 2)
+        let targetWindow = WindowID(app: target, token: 11)
+        let fake = FakeWindowSystem(
+            apps: [makeApp(1, windowTokens: [10, 11]), makeApp(2)],
+            frontmost: priorFrontmost
+        )
+        let controller = WindowController(system: fake)
+        // Reveal a window of a backgrounded app: hide the prior frontmost, isolate 11.
+        controller.hideOtherApps(besides: target)
+        controller.hideOtherWindows(besides: targetWindow)
+        fake.clearLog() // ignore setup; assert only on what commit does
+
+        controller.commit(targetWindow)
+
+        // Race fix: commit activates ONLY the target app — never re-activating the
+        // prior frontmost, whose async activation could win and bury the choice.
+        XCTAssertEqual(fake.activationLog, [target])
+        // Cache-miss fix: commit re-enumerates the target app so a stale AX element
+        // can't make un-minimize/raise/focus silently no-op.
+        XCTAssertTrue(fake.enumerationLog.contains(target))
+        // End state: the chosen window is frontmost, focused, and on top of its app.
+        XCTAssertEqual(fake.frontmost, target)
+        XCTAssertEqual(fake.focusedWindow, targetWindow)
+        XCTAssertEqual(fake.windows(of: target).first, targetWindow)
+    }
+
     // MARK: - Fixtures
 
     private func makeApp(
@@ -296,10 +326,19 @@ final class FakeWindowSystem: WindowControlling {
     var apps: [AppState]
     var frontmost: AppID?
     private(set) var focusedWindow: WindowID?
+    /// Apps passed to `activate` / `windows(of:)`, in call order — lets a test assert
+    /// the commit ordering (no prior-frontmost re-activation; target cache refreshed).
+    private(set) var activationLog: [AppID] = []
+    private(set) var enumerationLog: [AppID] = []
 
     init(apps: [AppState], frontmost: AppID?) {
         self.apps = apps
         self.frontmost = frontmost
+    }
+
+    func clearLog() {
+        activationLog = []
+        enumerationLog = []
     }
 
     private func appState(_ id: AppID) -> AppState? {
@@ -315,7 +354,8 @@ final class FakeWindowSystem: WindowControlling {
     }
 
     func windows(of app: AppID) -> [WindowID] {
-        appState(app)?.windows.map { $0.id } ?? []
+        enumerationLog.append(app)
+        return appState(app)?.windows.map { $0.id } ?? []
     }
 
     func frontmostApp() -> AppID? {
@@ -331,6 +371,7 @@ final class FakeWindowSystem: WindowControlling {
     }
 
     func activate(_ app: AppID) {
+        activationLog.append(app)
         frontmost = app
         guard let index = apps.firstIndex(where: { $0.id == app }) else { return }
         let state = apps.remove(at: index)
