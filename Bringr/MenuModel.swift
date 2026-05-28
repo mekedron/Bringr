@@ -177,7 +177,10 @@ struct WindowSwitcherMenu: MenuDefinition {
             title: "Applications",
             action: .expand,
             children: .dynamic {
-                enumerator.enumerate(onScreen: screenBounds).map {
+                // The apps ring is the one summon-time read, resolved before any reveal,
+                // so it records the recent-use order (Bringr-93j.46); the per-app
+                // sub-wheels re-read on hover and must not (`recordingRecency` defaults off).
+                enumerator.enumerate(onScreen: screenBounds, recordingRecency: true).map {
                     Self.appNode($0, onScreen: screenBounds, enumerator: enumerator)
                 }
             }

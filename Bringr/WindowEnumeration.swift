@@ -65,6 +65,12 @@ final class WindowEnumerator {
     /// (mirroring `RevealStrategy.current`), while tests inject fixed orders.
     private let appOrder: () -> AppSortOrder
     private let windowOrder: () -> WindowSortOrder
+    /// Bringr's own recent-use order (Bringr-93j.46). When present, the `.recentlyUsed`
+    /// sort is driven by this persisted MRU instead of the live z-order, so previewing —
+    /// which perturbs the live z-order — no longer reshuffles the order between summons.
+    /// `nil` (the default, and every test that doesn't inject one) keeps the original
+    /// live-z-order behavior, so this is purely additive.
+    private let recency: RecencyTracker?
     private let log = Logger(subsystem: "com.mekedron.Bringr", category: "enumeration")
 
     /// Wall-clock duration of the most recent `enumerate()` call, recorded so the
@@ -74,11 +80,13 @@ final class WindowEnumerator {
     init(
         source: WindowEnumerationSource? = nil,
         appOrder: @escaping () -> AppSortOrder = { AppSortOrder.current() },
-        windowOrder: @escaping () -> WindowSortOrder = { WindowSortOrder.current() }
+        windowOrder: @escaping () -> WindowSortOrder = { WindowSortOrder.current() },
+        recency: RecencyTracker? = nil
     ) {
         self.source = source ?? CGWindowSource()
         self.appOrder = appOrder
         self.windowOrder = windowOrder
+        self.recency = recency
     }
 
     /// Apps that currently own at least one normal, on-screen window, each with
@@ -89,11 +97,20 @@ final class WindowEnumerator {
     /// only windows living on that display are returned, so the wheel reflects just the
     /// screen the menu was summoned on; an app drops out entirely if none of its windows
     /// are on that display. `nil` spans every display (the menu-bar summon, tests).
-    func enumerate(onScreen screenBounds: CGRect? = nil) -> [AppWindows] {
+    ///
+    /// `recordingRecency` distinguishes the one authoritative summon-time read (the apps
+    /// ring) from the per-app sub-wheel re-reads that hover triggers (Bringr-93j.46). Only
+    /// the summon read folds the live order into `RecencyTracker`, because only it runs
+    /// *before* any reveal perturbs the z-order; the hover re-reads pass `false` so a
+    /// preview never updates the recent-use order. With no `RecencyTracker` injected this
+    /// flag is inert.
+    func enumerate(onScreen screenBounds: CGRect? = nil, recordingRecency: Bool = false) -> [AppWindows] {
         let start = DispatchTime.now().uptimeNanoseconds
         let normal = source.rawWindows().filter(isNormalWindow)
         let onScreen = filter(normal, toScreen: screenBounds)
-        let result = sorted(group(onScreen))
+        let grouped = group(onScreen)
+        if recordingRecency { recency?.observe(grouped) }
+        let result = sorted(grouped)
         let elapsed = TimeInterval(DispatchTime.now().uptimeNanoseconds - start) / 1_000_000_000
         lastDuration = elapsed
         log.debug("Enumerated \(result.count) app(s) in \(Int((elapsed * 1000).rounded())) ms")
@@ -150,11 +167,14 @@ final class WindowEnumerator {
     /// positions stop reshuffling without any recency tracking of our own.
     private func sorted(_ apps: [AppWindows]) -> [AppWindows] {
         let windowsSorted = apps.map { app in
-            AppWindows(id: app.id, name: app.name, windows: sortWindows(app.windows))
+            AppWindows(id: app.id, name: app.name, windows: sortWindows(app.windows, appName: app.name))
         }
         switch appOrder() {
         case .recentlyUsed:
-            return windowsSorted
+            // Drive recent-use from Bringr's own MRU when present, so previewing (which
+            // perturbs the live z-order) doesn't reshuffle it; fall back to the live
+            // front-to-back order when no tracker is injected (Bringr-93j.46).
+            return recency?.orderedApps(windowsSorted) ?? windowsSorted
         case .name:
             return windowsSorted.sorted { lhs, rhs in
                 switch lhs.name.localizedCaseInsensitiveCompare(rhs.name) {
@@ -168,11 +188,13 @@ final class WindowEnumerator {
 
     /// Order one app's windows by the persisted window sort order. `.fixed` sorts by
     /// window number, which macOS assigns in creation order, so the oldest window keeps
-    /// the first spot summon to summon.
-    private func sortWindows(_ windows: [WindowInfo]) -> [WindowInfo] {
+    /// the first spot summon to summon. `.recentlyUsed` uses Bringr's own per-app window
+    /// MRU when present, so previewing windows doesn't reshuffle them, falling back to the
+    /// live front-to-back order otherwise (Bringr-93j.46).
+    private func sortWindows(_ windows: [WindowInfo], appName: String) -> [WindowInfo] {
         switch windowOrder() {
         case .recentlyUsed:
-            return windows
+            return recency?.orderedWindows(forAppNamed: appName, windows) ?? windows
         case .fixed:
             return windows.sorted { $0.id.token < $1.id.token }
         }

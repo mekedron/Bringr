@@ -89,7 +89,9 @@ struct MyAppsMenu: MenuDefinition {
             title: "Applications",
             action: .expand,
             children: .dynamic {
-                let live = enumerator.enumerate(onScreen: screenBounds)
+                // The one summon-time read, before any reveal, so it records the
+                // recent-use order; hover sub-wheels re-read without recording (Bringr-93j.46).
+                let live = enumerator.enumerate(onScreen: screenBounds, recordingRecency: true)
                 // Keep the manual order (the default), or let the active Apps sort order
                 // reorder the curated block when the user turned that off (Bringr-93j.43).
                 let orderedCurated = keepCuratedOrder()
