@@ -65,6 +65,8 @@
 		1A000000000000000000008C /* RecencyTracker.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1A000000000000000000008B /* RecencyTracker.swift */; };
 		1A000000000000000000008E /* RecencyTrackerTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1A000000000000000000008D /* RecencyTrackerTests.swift */; };
 		1A0000000000000000000090 /* WindowEnumeratorRecencyTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1A000000000000000000008F /* WindowEnumeratorRecencyTests.swift */; };
+		1A0000000000000000000092 /* DockIconManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1A0000000000000000000091 /* DockIconManager.swift */; };
+		1A0000000000000000000094 /* DockIconManagerTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1A0000000000000000000093 /* DockIconManagerTests.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -138,6 +140,8 @@
 		1A000000000000000000008B /* RecencyTracker.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RecencyTracker.swift; sourceTree = "<group>"; };
 		1A000000000000000000008D /* RecencyTrackerTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RecencyTrackerTests.swift; sourceTree = "<group>"; };
 		1A000000000000000000008F /* WindowEnumeratorRecencyTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WindowEnumeratorRecencyTests.swift; sourceTree = "<group>"; };
+		1A0000000000000000000091 /* DockIconManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DockIconManager.swift; sourceTree = "<group>"; };
+		1A0000000000000000000093 /* DockIconManagerTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DockIconManagerTests.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -209,6 +213,7 @@
 				1A0000000000000000000081 /* AppLauncher.swift */,
 				1A0000000000000000000085 /* MyAppsMenu.swift */,
 				1A000000000000000000008B /* RecencyTracker.swift */,
+				1A0000000000000000000091 /* DockIconManager.swift */,
 			);
 			path = Bringr;
 			sourceTree = "<group>";
@@ -244,6 +249,7 @@
 				1A0000000000000000000089 /* MyAppsMenuSortingTests.swift */,
 				1A000000000000000000008D /* RecencyTrackerTests.swift */,
 				1A000000000000000000008F /* WindowEnumeratorRecencyTests.swift */,
+				1A0000000000000000000093 /* DockIconManagerTests.swift */,
 			);
 			path = BringrTests;
 			sourceTree = "<group>";
@@ -376,6 +382,7 @@
 				1A0000000000000000000082 /* AppLauncher.swift in Sources */,
 				1A0000000000000000000086 /* MyAppsMenu.swift in Sources */,
 				1A000000000000000000008C /* RecencyTracker.swift in Sources */,
+				1A0000000000000000000092 /* DockIconManager.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -411,6 +418,7 @@
 				1A000000000000000000008A /* MyAppsMenuSortingTests.swift in Sources */,
 				1A000000000000000000008E /* RecencyTrackerTests.swift in Sources */,
 				1A0000000000000000000090 /* WindowEnumeratorRecencyTests.swift in Sources */,
+				1A0000000000000000000094 /* DockIconManagerTests.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

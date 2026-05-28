@@ -22,6 +22,8 @@ struct BringrApp: App {
             PreferencesView()
                 .environmentObject(appDelegate.permissions)
                 .environmentObject(appDelegate.launchAtLogin)
+                .onAppear { appDelegate.dockIcon.windowOpened() }
+                .onDisappear { appDelegate.dockIcon.windowClosed() }
         }
         .windowResizability(.contentSize)
         .defaultPosition(.center)

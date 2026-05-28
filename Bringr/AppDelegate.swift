@@ -11,6 +11,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     let permissions = PermissionsManager()
     /// Backs the "Launch at login" toggle in Preferences (Bringr-toj).
     let launchAtLogin = LaunchAtLoginManager()
+    /// Shows a Dock icon while the Preferences window is open and hides it again when
+    /// it closes, so the menu-bar-only app behaves like a normal windowed app while a
+    /// window is up (Bringr-93j.45). Driven by the Preferences window's
+    /// appear/disappear in `BringrApp`.
+    let dockIcon = DockIconManager()
     /// The pre-warmed radial menu, summoned by the menu-bar item (and, later, the
     /// global activation triggers in US-007/US-008). `nil` under XCTest, where the
     /// launch bootstrap is skipped.
