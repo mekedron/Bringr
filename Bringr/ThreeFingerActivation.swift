@@ -1,4 +1,5 @@
 import AppKit
+import CoreGraphics
 import Foundation
 import os
 
@@ -49,6 +50,9 @@ struct ThreeFingerPressDetector {
     private var isClicking = false
     /// Whether a press is currently latched, awaiting the fingers to lift.
     private var isPressed = false
+    /// Whether the live tap swallowed the current press's mouse-down, so it can
+    /// swallow the matching mouse-up too (Bringr-93j.23).
+    private var clickSuppressed = false
 
     init(requiredFingerCount: Int = 3) {
         self.requiredFingerCount = requiredFingerCount
@@ -74,12 +78,35 @@ struct ThreeFingerPressDetector {
         return .press
     }
 
+    /// Feed a physical click transition and get back both the gesture reaction and
+    /// whether the live tap should *swallow* this click so it never reaches the app
+    /// behind the menu (Bringr-93j.23).
+    ///
+    /// A mouse-down is swallowed exactly when it completes a three-finger press; its
+    /// matching mouse-up is swallowed iff its down was, so the app behind never sees
+    /// an unbalanced click (a lone up would otherwise end a drag it never began).
+    /// Ordinary one-/two-finger clicks complete no press, so they pass through
+    /// untouched (AC2). When the third finger lands *after* the click the down has
+    /// already been delivered and cannot be recalled, so that rare interleave still
+    /// summons but does not suppress — it is the one case where the click leaks.
+    mutating func handleClick(down: Bool) -> (reaction: ThreeFingerReaction, suppress: Bool) {
+        let reaction = handle(.click(down: down))
+        if down {
+            clickSuppressed = (reaction == .press)
+            return (reaction, clickSuppressed)
+        }
+        let suppress = clickSuppressed
+        clickSuppressed = false
+        return (reaction, suppress)
+    }
+
     /// Clear all state, so a stale press or click from a previous session never
     /// resolves into a new one. Called when the monitor (re)starts.
     mutating func reset() {
         fingerCount = 0
         isClicking = false
         isPressed = false
+        clickSuppressed = false
     }
 }
 
@@ -118,15 +145,29 @@ private let threeFingerContactCallback: MTContactCallback = { _, _, numTouches, 
 // MARK: - Live monitor (MultitouchSupport)
 
 /// Observes the trackpad through the private MultitouchSupport framework for the
-/// finger count and a global `NSEvent` monitor for the physical click, feeds both
-/// into a `ThreeFingerPressDetector`, and fires `onPress` only on a real three-
-/// finger click (and `onRelease` when the fingers lift).
+/// finger count and an active `CGEventTap` for the physical click, feeds both into a
+/// `ThreeFingerPressDetector`, and fires `onPress` only on a real three-finger click
+/// (and `onRelease` when the fingers lift).
 ///
-/// The framework is loaded at runtime with `dlopen`/`dlsym` rather than linked, so
-/// if it (or any symbol, or any trackpad) is missing, `start()` fails gracefully,
-/// logs, and the app keeps running with three-finger activation simply disabled
-/// (AC3). Both observers are passive — they never consume events — so every other
-/// gesture, including ordinary clicks, passes through to the system untouched (AC2).
+/// **Why an active tap for the click (Bringr-93j.23):** a three-finger press's click
+/// must not also land on the app *behind* the menu (clicking a button, moving the
+/// caret, etc.). Only an active tap can *consume* an event, so the click is detected
+/// and swallowed in one place. What a tap cannot reach is the WindowServer's own
+/// multi-finger gestures (Mission Control, App Exposé, swipe-between-pages): those
+/// are interpreted below the event-tap layer and are not userspace-suppressible — but
+/// they require a *swipe*, not a stationary *click*, so a real three-finger press
+/// never sets them off. Two-finger gestures (scroll, magnify) cannot physically
+/// co-occur with three fingers down, so there is nothing further to hold back.
+///
+/// The MultitouchSupport framework is loaded at runtime with `dlopen`/`dlsym` rather
+/// than linked, so if it (or any symbol, or any trackpad) is missing, finger reading
+/// fails gracefully, logs, and the app keeps running with three-finger activation
+/// disabled (AC3). The click tap needs Accessibility/Input-Monitoring permission; if
+/// it cannot be created we fall back to a passive global monitor so the summon still
+/// works (without click suppression), and upgrade to the tap once permission is
+/// granted — call `start()` again, after the mouse-chord tap, to keep this tap at the
+/// head of the chain so it wins the three-finger click. Finger reading and ordinary
+/// clicks both stay untouched (AC2).
 @MainActor
 final class ThreeFingerMonitor {
     /// The single active monitor, so the context-free C callback can route frames
@@ -142,8 +183,13 @@ final class ThreeFingerMonitor {
     private var device: MTDeviceRef?
     private var stopFunc: MTDeviceStopFunc?
     private var unregisterFunc: MTUnregisterCallbackFunc?
-    /// Global passive monitor for the physical trackpad click that gates a press.
-    private var clickMonitor: Any?
+    /// Active tap for the physical trackpad click, so a three-finger press's click can
+    /// be consumed instead of leaking to the app behind the menu (Bringr-93j.23).
+    private var clickTap: CFMachPort?
+    private var clickRunLoopSource: CFRunLoopSource?
+    /// Passive global click monitor used only when the tap cannot be created (no
+    /// permission): the summon still works, but the click is not suppressed.
+    private var clickFallbackMonitor: Any?
 
     private static let frameworkPath =
         "/System/Library/PrivateFrameworks/MultitouchSupport.framework/MultitouchSupport"
@@ -162,11 +208,21 @@ final class ThreeFingerMonitor {
     /// Whether the trackpad monitor is currently installed and running.
     var isRunning: Bool { device != nil }
 
-    /// Load MultitouchSupport, register the contact callback, and start the
-    /// default trackpad. Idempotent; returns `false` (and logs) when the framework,
-    /// a symbol, or a trackpad is unavailable, leaving the app running normally.
+    /// Start finger reading and install the click-detection path. Idempotent and
+    /// safe to call again to upgrade the click fallback to a tap once permission is
+    /// granted; returns whether finger reading is up (the core requirement). Logs and
+    /// degrades gracefully when MultitouchSupport, a trackpad, or permission is absent.
     @discardableResult
     func start() -> Bool {
+        let running = startMultitouch()
+        installClickPath()
+        return running
+    }
+
+    /// Load MultitouchSupport, register the contact callback, and start the default
+    /// trackpad. Idempotent; returns `false` (and logs) when the framework, a symbol,
+    /// or a trackpad is unavailable, leaving the app running normally.
+    private func startMultitouch() -> Bool {
         guard device == nil else { return true }
 
         guard let handle = dlopen(Self.frameworkPath, RTLD_LAZY) else {
@@ -208,29 +264,85 @@ final class ThreeFingerMonitor {
         stopFunc = stop
         unregisterFunc = unregister
 
-        // The physical click that turns a three-finger rest into a press. A global
-        // NSEvent monitor is passive (it never consumes the click) and needs no
-        // Accessibility permission for mouse events, keeping this path permission-free.
-        clickMonitor = NSEvent.addGlobalMonitorForEvents(
-            matching: [.leftMouseDown, .leftMouseUp]
-        ) { [weak self] event in
-            MainActor.assumeIsolated {
-                self?.handleClick(down: event.type == .leftMouseDown)
-            }
-        }
-
-        log.info("Three-finger trackpad monitor installed.")
+        log.info("Three-finger finger reading installed.")
         return true
     }
 
-    /// Stop the device, unregister the callback, and unload the framework.
+    /// Install the physical-click detector: an active tap if permission allows (so a
+    /// three-finger click can be swallowed), otherwise a passive fallback monitor (so
+    /// the summon still works without suppression). Re-running upgrades fallback → tap.
+    private func installClickPath() {
+        guard clickTap == nil else { return } // already suppression-capable
+        if installClickTap() {
+            removeClickFallbackMonitor() // upgraded from the fallback
+        } else if clickFallbackMonitor == nil {
+            installClickFallbackMonitor()
+        }
+    }
+
+    /// Create the active click tap. Returns `false` (and logs) when the tap cannot be
+    /// created, which happens without Accessibility/Input-Monitoring permission.
+    private func installClickTap() -> Bool {
+        let mask: CGEventMask =
+            (1 << CGEventType.leftMouseDown.rawValue) |
+            (1 << CGEventType.leftMouseUp.rawValue)
+
+        let callback: CGEventTapCallBack = { _, type, event, userInfo in
+            guard let userInfo else { return Unmanaged.passUnretained(event) }
+            let monitor = Unmanaged<ThreeFingerMonitor>.fromOpaque(userInfo).takeUnretainedValue()
+            return MainActor.assumeIsolated { monitor.handleTap(type: type, event: event) }
+        }
+
+        guard let tap = CGEvent.tapCreate(
+            tap: .cgSessionEventTap,
+            place: .headInsertEventTap,
+            options: .defaultTap,
+            eventsOfInterest: mask,
+            callback: callback,
+            userInfo: Unmanaged.passUnretained(self).toOpaque()
+        ) else {
+            log.error("Could not create three-finger click tap — permission missing; click will not be suppressed.")
+            return false
+        }
+
+        let source = CFMachPortCreateRunLoopSource(kCFAllocatorDefault, tap, 0)
+        CFRunLoopAddSource(CFRunLoopGetMain(), source, .commonModes)
+        CGEvent.tapEnable(tap: tap, enable: true)
+        clickTap = tap
+        clickRunLoopSource = source
+        log.info("Three-finger click tap installed (suppression active).")
+        return true
+    }
+
+    /// The permission-free fallback: a passive global monitor that detects the click
+    /// but cannot consume it, so the summon works while the click still leaks.
+    private func installClickFallbackMonitor() {
+        clickFallbackMonitor = NSEvent.addGlobalMonitorForEvents(
+            matching: [.leftMouseDown, .leftMouseUp]
+        ) { [weak self] event in
+            MainActor.assumeIsolated {
+                self?.handleFallbackClick(down: event.type == .leftMouseDown)
+            }
+        }
+    }
+
+    private func removeClickFallbackMonitor() {
+        if let clickFallbackMonitor { NSEvent.removeMonitor(clickFallbackMonitor) }
+        clickFallbackMonitor = nil
+    }
+
+    /// Stop the device, unregister the callback, tear down the click path, and unload
+    /// the framework.
     func stop() {
         if let device {
             stopFunc?(device)
             unregisterFunc?(device, threeFingerContactCallback)
         }
-        if let clickMonitor { NSEvent.removeMonitor(clickMonitor) }
-        clickMonitor = nil
+        if let clickTap { CGEvent.tapEnable(tap: clickTap, enable: false) }
+        if let clickRunLoopSource { CFRunLoopRemoveSource(CFRunLoopGetMain(), clickRunLoopSource, .commonModes) }
+        clickTap = nil
+        clickRunLoopSource = nil
+        removeClickFallbackMonitor()
         if Self.active === self { Self.active = nil }
         device = nil
         stopFunc = nil
@@ -246,10 +358,30 @@ final class ThreeFingerMonitor {
         react(to: detector.handle(.fingerCount(touchCount)))
     }
 
-    /// Feed a physical trackpad click transition to the detector. The click is what
-    /// distinguishes a real three-finger press from a rest or tap.
-    private func handleClick(down: Bool) {
-        react(to: detector.handle(.click(down: down)))
+    /// Handle one event from the click tap: feed the click to the detector and
+    /// *swallow* it when it belongs to a three-finger press, so the click never
+    /// reaches the app behind the menu (Bringr-93j.23). Re-enables the tap if the
+    /// system disabled it for running over budget.
+    private func handleTap(type: CGEventType, event: CGEvent) -> Unmanaged<CGEvent>? {
+        if type == .tapDisabledByTimeout || type == .tapDisabledByUserInput {
+            if let clickTap { CGEvent.tapEnable(tap: clickTap, enable: true) }
+            return Unmanaged.passUnretained(event)
+        }
+        let down: Bool
+        switch type {
+        case .leftMouseDown: down = true
+        case .leftMouseUp: down = false
+        default: return Unmanaged.passUnretained(event)
+        }
+        let (reaction, suppress) = detector.handleClick(down: down)
+        react(to: reaction)
+        return suppress ? nil : Unmanaged.passUnretained(event)
+    }
+
+    /// The permission-free path's click handler: detect (but never suppress) the
+    /// click. Used only when the active tap could not be created.
+    private func handleFallbackClick(down: Bool) {
+        react(to: detector.handleClick(down: down).reaction)
     }
 
     /// Perform the detector's verdict.

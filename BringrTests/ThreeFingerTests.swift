@@ -141,6 +141,64 @@ final class ThreeFingerTests: XCTestCase {
         XCTAssertEqual(detector.handle(.fingerCount(1)), .release)
     }
 
+    // MARK: - Bringr-93j.23: the press's click is swallowed, not leaked
+
+    func testThreeFingerClickDownAndUpAreSuppressed() {
+        // The real three-finger press: its mouse-down and the matching up are both
+        // swallowed so the click never lands on the app behind the menu.
+        var detector = ThreeFingerPressDetector()
+        _ = detector.handle(.fingerCount(3))
+        let down = detector.handleClick(down: true)
+        XCTAssertEqual(down.reaction, .press)
+        XCTAssertTrue(down.suppress, "the press's mouse-down is swallowed")
+        XCTAssertTrue(detector.handleClick(down: false).suppress, "and its matching up too")
+    }
+
+    func testOrdinaryClickIsNotSuppressed() {
+        // A plain click with no fingers down must reach the app unchanged (AC2).
+        var detector = ThreeFingerPressDetector()
+        XCTAssertFalse(detector.handleClick(down: true).suppress)
+        XCTAssertFalse(detector.handleClick(down: false).suppress)
+    }
+
+    func testTwoFingerClickIsNotSuppressed() {
+        var detector = ThreeFingerPressDetector()
+        _ = detector.handle(.fingerCount(2))
+        XCTAssertFalse(detector.handleClick(down: true).suppress, "two-finger click is a normal click")
+    }
+
+    func testClickUpIsSwallowedEvenWhenFingersLiftFirst() {
+        // Hold-to-select commits on finger-lift, so the physical click is often still
+        // down when the fingers leave; its eventual up must still be swallowed so the
+        // app behind never gets an unbalanced mouse-up.
+        var detector = ThreeFingerPressDetector()
+        _ = detector.handle(.fingerCount(3))
+        XCTAssertTrue(detector.handleClick(down: true).suppress)
+        XCTAssertEqual(detector.handle(.fingerCount(0)), .release)
+        XCTAssertTrue(detector.handleClick(down: false).suppress, "the matching up is swallowed after the fingers lift")
+    }
+
+    func testInterleavedThirdFingerSummonsButDoesNotSuppress() {
+        // The one leak: when the third finger lands *after* the click, the down has
+        // already been delivered and cannot be recalled — it still summons, but the
+        // click is not suppressed (and neither is its up, since the down was not).
+        var detector = ThreeFingerPressDetector()
+        _ = detector.handle(.fingerCount(2))
+        let down = detector.handleClick(down: true)
+        XCTAssertEqual(down.reaction, .none)
+        XCTAssertFalse(down.suppress)
+        XCTAssertEqual(detector.handle(.fingerCount(3)), .press, "the third finger completes the press")
+        XCTAssertFalse(detector.handleClick(down: false).suppress, "the up matches its un-suppressed down")
+    }
+
+    func testResetClearsClickSuppression() {
+        var detector = ThreeFingerPressDetector()
+        _ = detector.handle(.fingerCount(3))
+        XCTAssertTrue(detector.handleClick(down: true).suppress)
+        detector.reset()
+        XCTAssertFalse(detector.handleClick(down: false).suppress, "a stale suppressed-down never swallows the next up")
+    }
+
     // MARK: - Reset
 
     func testResetClearsLatchedPressAndInputs() {

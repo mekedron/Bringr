@@ -76,7 +76,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
         trustCancellable = permissions.$isTrusted
             .sink { [weak self] trusted in
-                if trusted { self?.activationMonitor?.start() }
+                guard trusted, let self else { return }
+                // Order matters: start the chord tap first, then the trackpad tap, so
+                // the trackpad tap is inserted at the head of the chain and sees a
+                // three-finger click before the chord tap can buffer it (Bringr-93j.23).
+                self.activationMonitor?.start()
+                self.trackpadMonitor?.start()
             }
     }
 

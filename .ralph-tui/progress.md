@@ -53,6 +53,19 @@ after each iteration and it's included in prompts for context.
   `navigator.open(...)` — never mid-session, so a Preferences change can't switch
   behaviour halfway through a reveal. To add one, copy `RevealStrategy` + its
   `strategyProvider` wiring.
+- **Two `CGEventTap`s at `.headInsertEventTap` run newest-first; to suppress an event
+  before another tap buffers it, create your tap *last*.** The mouse-chord tap holds a
+  lone `leftMouseDown` for ~120 ms then replays it (leaking it to the app behind). The
+  three-finger click tap must therefore be created *after* the chord tap so it sits at
+  the head and *consumes* the three-finger click before the chord tap can buffer it.
+  Enforce the order everywhere the taps are (re)started — launch wiring AND the
+  `permissions.$isTrusted` retry sink both do `chord.start()` then `trackpad.start()`.
+  A tap is transparent when it returns `passUnretained(event)`, so the three-finger tap
+  only consumes when 3 fingers are actually down; a 0-finger mouse click passes straight
+  through to the chord tap. **Only an active tap can consume; a passive
+  `addGlobalMonitorForEvents` cannot** — so suppression needs Accessibility permission.
+  Keep the passive monitor as a permission-free *fallback* (summon works, no
+  suppression) and upgrade it to the tap on permission grant by re-calling `start()`.
 - **A visual side effect that needs its own AppKit window goes behind a protocol seam,
   like `EventMonitorInstaller`/`PermissionsManager`.** `Dimming` (show/clear) is injected
   into `WindowController`; production wires `LiveDimmer` (a reused click-through `NSPanel`),
@@ -61,6 +74,59 @@ after each iteration and it's included in prompts for context.
   needs live geometry (window frames for the dim cutout), add it to the existing
   `WindowControlling` protocol (`frame(of:)`) rather than reaching into AppKit from the core.
 
+---
+
+## 2026-05-28 - Bringr-93j.23
+
+Three-finger click should suppress other trackpad gestures while it opens the menu.
+
+- **Research finding (the bead asked to investigate feasibility first):**
+  - The only *real* leak today is the triggering **click** itself. The three-finger
+    click was detected by a *passive* `NSEvent` global monitor that can't consume, so
+    the `leftMouseDown` reached the app behind — and the mouse-chord tap actually
+    *buffers + replays* that lone left-click ~120 ms later, so the app behind got a
+    genuine stray click. Fixed by detecting the click with an active `CGEventTap` that
+    swallows it.
+  - WindowServer multi-finger gestures (Mission Control, App Exposé, swipe-between-
+    pages) are interpreted *below* the event-tap layer and are **not** userspace-
+    suppressible. But they need a *swipe*, not a stationary *click*, so a real three-
+    finger press never triggers them (the bead author's own intuition). Documented, not
+    "fixed" — there's nothing to fix.
+  - Two-finger gestures (scroll/magnify) can't physically co-occur with three fingers
+    down, so suppressing them would guard a scenario that can't happen — deliberately
+    NOT added (would be over-engineering + taxes every scroll tick).
+- **What:** `ThreeFingerPressDetector` gained a pure `handleClick(down:) -> (reaction,
+  suppress)`: a mouse-down is swallowed exactly when it completes a press, and the
+  matching up iff its down was (no unbalanced click to the app behind). The live
+  `ThreeFingerMonitor` now detects the click via an active `CGEventTap` (mirrors
+  `MouseChordMonitor`) instead of the passive monitor, consuming the three-finger
+  click. Kept the passive monitor as a permission-free fallback (summon works, no
+  suppression); `start()` upgrades fallback → tap and is re-called on permission grant.
+- **Files changed:**
+  - `Bringr/ThreeFingerActivation.swift` — `clickSuppressed` state + `handleClick`
+    on the detector; live class split into `startMultitouch()` + `installClickPath()`
+    (`installClickTap`/`installClickFallbackMonitor`), new `handleTap` consume logic,
+    `import CoreGraphics`, expanded `stop()`. Class doc records the research findings.
+  - `Bringr/AppDelegate.swift` — `$isTrusted` retry sink now starts chord THEN trackpad
+    (ordering matters, see the new pattern up top).
+  - `BringrTests/ThreeFingerTests.swift` — 6 new tests (down+up suppressed, ordinary/
+    two-finger not suppressed, up swallowed after fingers lift, interleave leak edge,
+    reset clears suppression). 17 → 23 in the class.
+- **Learnings:**
+  - Two head-inserted taps run newest-first — see the new tap-ordering pattern at the
+    top. This is the load-bearing insight; get the start order wrong and the chord tap
+    eats the three-finger click.
+  - Switching the click path to a tap means three-finger suppression needs Accessibility
+    permission (the passive monitor was permission-free). Preserved permission-free
+    *summon* via the fallback so this isn't a regression; only suppression waits for
+    permission.
+  - Couldn't physically three-finger-click in the automated env. The consume *decision*
+    is fully unit-tested (the pure `handleClick`); the live tap consume + the two-tap
+    ordering need a human to verify on a real trackpad (three-finger-click over a button
+    in another app → the button must NOT fire). App build + launch verified (no crash).
+  - Quality gates: build SUCCEEDED, `swiftlint lint --strict` 0 violations, all 206
+    tests pass (was 200; +6, confirmed via `-only-testing:BringrTests/ThreeFingerTests`
+    → 23 run).
 ---
 
 ## 2026-05-28 - Bringr-93j.20
