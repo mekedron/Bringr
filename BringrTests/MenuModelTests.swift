@@ -141,13 +141,56 @@ final class MenuModelTests: XCTestCase {
         XCTAssertEqual(appNode.resolvedChildren().map(\.title), ["Inbox", "Docs"])
     }
 
+    // MARK: - Bringr-93j.30: the summon display scopes both ring and sub-wheel
+
+    /// Display A in CoreGraphics-global space; windows with x ≥ 1440 (centre off A) live
+    /// on a second display and must not appear when the menu is summoned on A.
+    private let screenA = CGRect(x: 0, y: 0, width: 1440, height: 900)
+
+    func testMakeRootRestrictsAppsRingToSummonScreen() {
+        let source = stub([
+            raw(number: 11, pid: 10, name: "Chrome", x: 100, y: 100),   // on A
+            raw(number: 41, pid: 40, name: "Mail", x: 1600, y: 100)     // off A
+        ])
+        let root = WindowSwitcherMenu(enumerator: WindowEnumerator(source: source))
+            .makeRoot(onScreen: screenA)
+
+        XCTAssertEqual(root.resolvedChildren().map(\.title), ["Chrome"])
+    }
+
+    func testSubWheelStaysLockedToSummonScreenOnLaterResolve() {
+        let source = stub([
+            raw(number: 11, pid: 10, name: "Chrome", title: "Inbox", x: 100, y: 100),   // on A
+            raw(number: 12, pid: 10, name: "Chrome", title: "Docs", x: 1500, y: 100)    // off A
+        ])
+        let appNode = WindowSwitcherMenu(enumerator: WindowEnumerator(source: source))
+            .makeRoot(onScreen: screenA).resolvedChildren()[0]
+
+        // The sub-wheel resolves later (on hover) yet still filters to the summon screen,
+        // so Chrome's window on the other display never leaks into the wheel.
+        XCTAssertEqual(appNode.resolvedChildren().map(\.title), ["Inbox"])
+    }
+
+    func testNoScreenSpansAllDisplays() {
+        let source = stub([
+            raw(number: 11, pid: 10, name: "Chrome", x: 100, y: 100),
+            raw(number: 41, pid: 40, name: "Mail", x: 1600, y: 100)
+        ])
+        let root = WindowSwitcherMenu(enumerator: WindowEnumerator(source: source)).makeRoot()
+
+        XCTAssertEqual(root.resolvedChildren().map(\.title), ["Chrome", "Mail"])
+    }
+
     // MARK: - Fixtures
 
     private func stub(_ windows: [RawWindow], selfPID: pid_t = 1) -> StubEnumerationSource {
         StubEnumerationSource(selfPID: selfPID, windows: windows)
     }
 
-    private func raw(number: Int, pid: pid_t, name: String, title: String = "") -> RawWindow {
+    private func raw(
+        number: Int, pid: pid_t, name: String, title: String = "",
+        x: CGFloat = 0, y: CGFloat = 0
+    ) -> RawWindow {
         RawWindow(
             windowNumber: number,
             ownerPID: pid,
@@ -155,7 +198,7 @@ final class MenuModelTests: XCTestCase {
             title: title,
             layer: 0,
             alpha: 1,
-            bounds: CGRect(x: 0, y: 0, width: 800, height: 600)
+            bounds: CGRect(x: x, y: y, width: 800, height: 600)
         )
     }
 }

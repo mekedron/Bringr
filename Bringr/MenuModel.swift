@@ -1,3 +1,4 @@
+import CoreGraphics
 import Foundation
 
 // MARK: - Actions
@@ -93,7 +94,15 @@ enum MenuTrigger: Hashable, Sendable {
 /// `makeRoot()` for a clean tree.
 @MainActor
 protocol MenuDefinition {
-    func makeRoot() -> MenuNode
+    /// Build a fresh tree for one summon. `screenBounds` (CoreGraphics-global, top-left
+    /// origin) restricts content to the display the menu was summoned on (Bringr-93j.30);
+    /// `nil` spans all displays. A menu that doesn't care about the display ignores it.
+    func makeRoot(onScreen screenBounds: CGRect?) -> MenuNode
+}
+
+extension MenuDefinition {
+    /// Build a tree spanning all displays — the default when a summon isn't scoped to one.
+    func makeRoot() -> MenuNode { makeRoot(onScreen: nil) }
 }
 
 /// Maps triggers to menu definitions and builds a fresh tree per summon. Keying
@@ -113,8 +122,9 @@ final class MenuRegistry {
     }
 
     /// Build a fresh menu tree for `trigger`, or `nil` if none is registered.
-    func makeMenu(for trigger: MenuTrigger) -> MenuNode? {
-        definitions[trigger]?.makeRoot()
+    /// `screenBounds` scopes the tree to one display (Bringr-93j.30); `nil` spans all.
+    func makeMenu(for trigger: MenuTrigger, onScreen screenBounds: CGRect? = nil) -> MenuNode? {
+        definitions[trigger]?.makeRoot(onScreen: screenBounds)
     }
 }
 
@@ -133,19 +143,27 @@ struct WindowSwitcherMenu: MenuDefinition {
         self.enumerator = enumerator
     }
 
-    func makeRoot() -> MenuNode {
+    func makeRoot(onScreen screenBounds: CGRect?) -> MenuNode {
         let enumerator = self.enumerator
+        // Capture `screenBounds` in both the apps provider and each app's windows
+        // provider so the whole menu — top-level ring and every sub-wheel — stays
+        // locked to the display the menu was summoned on, even as hover re-resolves
+        // sub-wheels from live state (Bringr-93j.30).
         return MenuNode(
             id: MenuNodeID("root:apps"),
             title: "Applications",
             action: .expand,
             children: .dynamic {
-                enumerator.enumerate().map { Self.appNode($0, enumerator: enumerator) }
+                enumerator.enumerate(onScreen: screenBounds).map {
+                    Self.appNode($0, onScreen: screenBounds, enumerator: enumerator)
+                }
             }
         )
     }
 
-    private static func appNode(_ app: AppWindows, enumerator: WindowEnumerator) -> MenuNode {
+    private static func appNode(
+        _ app: AppWindows, onScreen screenBounds: CGRect?, enumerator: WindowEnumerator
+    ) -> MenuNode {
         let appID = app.id
         return MenuNode(
             id: MenuNodeID("app:\(appID.pid)"),
@@ -153,7 +171,7 @@ struct WindowSwitcherMenu: MenuDefinition {
             action: .expand,
             representedApp: appID,
             children: .dynamic {
-                let current = enumerator.enumerate().first { $0.id == appID }
+                let current = enumerator.enumerate(onScreen: screenBounds).first { $0.id == appID }
                 return (current?.windows ?? []).map { Self.windowNode($0) }
             }
         )

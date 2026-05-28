@@ -1,3 +1,4 @@
+import AppKit
 import CoreGraphics
 import Foundation
 import os
@@ -83,10 +84,16 @@ final class WindowEnumerator {
     /// Apps that currently own at least one normal, on-screen window, each with
     /// its windows front-to-back. Excludes Bringr itself and apps whose only
     /// on-screen surfaces are non-normal (menu-bar items, panels, agents).
-    func enumerate() -> [AppWindows] {
+    ///
+    /// `screenBounds` restricts the result to one display (Bringr-93j.30): when set,
+    /// only windows living on that display are returned, so the wheel reflects just the
+    /// screen the menu was summoned on; an app drops out entirely if none of its windows
+    /// are on that display. `nil` spans every display (the menu-bar summon, tests).
+    func enumerate(onScreen screenBounds: CGRect? = nil) -> [AppWindows] {
         let start = DispatchTime.now().uptimeNanoseconds
         let normal = source.rawWindows().filter(isNormalWindow)
-        let result = sorted(group(normal))
+        let onScreen = filter(normal, toScreen: screenBounds)
+        let result = sorted(group(onScreen))
         let elapsed = TimeInterval(DispatchTime.now().uptimeNanoseconds - start) / 1_000_000_000
         lastDuration = elapsed
         log.debug("Enumerated \(result.count) app(s) in \(Int((elapsed * 1000).rounded())) ms")
@@ -100,6 +107,19 @@ final class WindowEnumerator {
             && !window.ownerName.isEmpty
             && window.bounds.width >= Self.minimumWindowSize
             && window.bounds.height >= Self.minimumWindowSize
+    }
+
+    /// Keep only windows that live on `screenBounds` — a display's bounds in
+    /// CoreGraphics' global, top-left-origin space, the same space as `RawWindow.bounds`
+    /// (both come from CoreGraphics), so the comparison needs no coordinate flip. A
+    /// window belongs to the display whose bounds contain its centre, so a window
+    /// straddling two displays counts on the one holding most of it and never appears on
+    /// both. `nil` keeps every window (span all displays). (Bringr-93j.30)
+    private func filter(_ windows: [RawWindow], toScreen screenBounds: CGRect?) -> [RawWindow] {
+        guard let screenBounds else { return windows }
+        return windows.filter {
+            screenBounds.contains(CGPoint(x: $0.bounds.midX, y: $0.bounds.midY))
+        }
     }
 
     private func group(_ windows: [RawWindow]) -> [AppWindows] {
@@ -199,5 +219,27 @@ final class CGWindowSource: WindowEnumerationSource {
             alpha: (info[kCGWindowAlpha as String] as? NSNumber)?.doubleValue ?? 1,
             bounds: bounds
         )
+    }
+}
+
+/// Resolves which display a summon happened on (Bringr-93j.30). This is the live
+/// `NSScreen` lookup behind the screen restriction; the geometry that consumes its
+/// result — `WindowEnumerator`'s screen filter — is pure and unit-tested, so this thin
+/// resolver is covered by build & run rather than a hermetic test.
+@MainActor
+enum ScreenLocator {
+    /// CoreGraphics-global bounds (top-left origin) of the display under `cursor`, an
+    /// AppKit-global, y-up point such as `NSEvent.mouseLocation`. Returns `CGDisplayBounds`
+    /// so the rect shares `RawWindow.bounds`' coordinate space; the cursor is matched in
+    /// AppKit space (where it lives) and the result delivered in CoreGraphics space (where
+    /// the windows live). `nil` when no display matches (e.g. a headless test host), which
+    /// makes enumeration span all displays instead of hiding everything.
+    static func displayBounds(forCursor cursor: CGPoint) -> CGRect? {
+        let screen = NSScreen.screens.first { $0.frame.contains(cursor) } ?? NSScreen.main
+        guard let screen,
+              let number = screen.deviceDescription[
+                NSDeviceDescriptionKey("NSScreenNumber")] as? NSNumber
+        else { return nil }
+        return CGDisplayBounds(CGDirectDisplayID(number.uint32Value))
     }
 }

@@ -231,6 +231,66 @@ final class WindowEnumerationTests: XCTestCase {
         return defaults
     }
 
+    // MARK: - Bringr-93j.30: restrict enumeration to the summon display
+
+    /// Two side-by-side 1440×900 displays in CoreGraphics' global space (the same
+    /// space `RawWindow.bounds` lives in): A spans x 0–1440, B spans x 1440–2880.
+    private let screenA = CGRect(x: 0, y: 0, width: 1440, height: 900)
+    private let screenB = CGRect(x: 1440, y: 0, width: 1440, height: 900)
+
+    func testRestrictsAppsAndWindowsToTheGivenDisplay() {
+        let source = FakeWindowEnumerationSource(selfPID: selfPID, windows: [
+            raw(number: 1, pid: 10, name: "Chrome", x: 100, y: 100),    // on A
+            raw(number: 2, pid: 10, name: "Chrome", x: 1500, y: 100),   // on B
+            raw(number: 3, pid: 20, name: "Ghostty", x: 200, y: 200),   // on A
+            raw(number: 4, pid: 30, name: "Mail", x: 1600, y: 200)      // on B
+        ])
+        let apps = WindowEnumerator(source: source).enumerate(onScreen: screenA)
+
+        // Mail (entirely on B) drops out; Chrome keeps only its window living on A.
+        XCTAssertEqual(apps.map(\.name), ["Chrome", "Ghostty"])
+        XCTAssertEqual(apps[0].windows.map(\.id.token), [1])
+        XCTAssertEqual(apps[1].windows.map(\.id.token), [3])
+    }
+
+    func testSameAppSplitAcrossDisplaysShowsOnlyEachDisplaysWindows() {
+        let source = FakeWindowEnumerationSource(selfPID: selfPID, windows: [
+            raw(number: 1, pid: 10, name: "Chrome", x: 100, y: 100),    // on A
+            raw(number: 2, pid: 10, name: "Chrome", x: 1500, y: 100)    // on B
+        ])
+
+        XCTAssertEqual(
+            WindowEnumerator(source: source).enumerate(onScreen: screenA)[0].windows.map(\.id.token),
+            [1]
+        )
+        XCTAssertEqual(
+            WindowEnumerator(source: source).enumerate(onScreen: screenB)[0].windows.map(\.id.token),
+            [2]
+        )
+    }
+
+    func testWindowStraddlingBoundaryBelongsToDisplayContainingItsCentre() {
+        // width 800 → centre x = x + 400; x = 1040 puts the centre exactly on the A|B
+        // seam (x 1440), which CGRect assigns to B (min edge inclusive, max exclusive).
+        let source = FakeWindowEnumerationSource(selfPID: selfPID, windows: [
+            raw(number: 1, pid: 10, name: "Chrome", x: 1040, y: 100)
+        ])
+
+        XCTAssertTrue(WindowEnumerator(source: source).enumerate(onScreen: screenA).isEmpty)
+        XCTAssertEqual(
+            WindowEnumerator(source: source).enumerate(onScreen: screenB).map(\.name), ["Chrome"]
+        )
+    }
+
+    func testDisplayWithNoMatchingWindowsYieldsNoApps() {
+        let elsewhere = CGRect(x: 5000, y: 5000, width: 100, height: 100)
+        let source = FakeWindowEnumerationSource(selfPID: selfPID, windows: [
+            raw(number: 1, pid: 10, name: "Chrome", x: 100, y: 100)
+        ])
+
+        XCTAssertTrue(WindowEnumerator(source: source).enumerate(onScreen: elsewhere).isEmpty)
+    }
+
     // MARK: - Fixtures
 
     private func raw(
@@ -240,6 +300,8 @@ final class WindowEnumerationTests: XCTestCase {
         title: String = "",
         layer: Int = 0,
         alpha: Double = 1,
+        x: CGFloat = 0,
+        y: CGFloat = 0,
         width: CGFloat = 800,
         height: CGFloat = 600
     ) -> RawWindow {
@@ -250,7 +312,7 @@ final class WindowEnumerationTests: XCTestCase {
             title: title,
             layer: layer,
             alpha: alpha,
-            bounds: CGRect(x: 0, y: 0, width: width, height: height)
+            bounds: CGRect(x: x, y: y, width: width, height: height)
         )
     }
 }

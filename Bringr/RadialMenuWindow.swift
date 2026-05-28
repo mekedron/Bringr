@@ -209,7 +209,10 @@ final class RadialMenuController: ObservableObject {
     /// location). Resolves the tree fresh so the wheel reflects live state, and
     /// starts tracking the cursor so hover can drill into apps.
     private func summon(trigger: MenuTrigger, at cursor: CGPoint) {
-        guard let root = registry.makeMenu(for: trigger) else { return }
+        // Scope the wheel to the display under the cursor so a multi-monitor setup shows
+        // only that screen's apps/windows (Bringr-93j.30); `nil` spans every display.
+        let screenBounds = ScreenLocator.displayBounds(forCursor: cursor)
+        guard let root = registry.makeMenu(for: trigger, onScreen: screenBounds) else { return }
         // Apply the persisted appearance before resolving the tree: the size feeds
         // both the rendered rings and the navigator's hit-testing through one shared
         // geometry, so they stay in lock-step at any size (US-014 AC3).
