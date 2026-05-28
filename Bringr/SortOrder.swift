@@ -19,6 +19,13 @@ enum AppSortOrder: String, CaseIterable, Sendable {
     /// A stable spot per app that doesn't reshuffle as you switch: apps sorted by name
     /// (A → Z), so each keeps the same position in the wheel from one summon to the next.
     case name
+    /// Match the Dock: apps ordered by their left-to-right position in the Dock, so the
+    /// wheel mirrors the Dock you already know (Bringr-93j.55). Finder, pinned to the
+    /// Dock's immovable first slot, leads — unless "Keep Finder last" (`DockOrder`) sends it
+    /// to the end instead. Apps running but not pinned trail the pinned block. The order
+    /// comes straight from the Dock's own preferences (`DockOrder.current`), so nothing
+    /// about Dock position is tracked or remembered by Bringr.
+    case dockPosition
 
     /// Recently-used (⌘-Tab order) is the default: a window switcher's whole point is
     /// jumping back to where you just were, so the most recent app should lead.
@@ -33,6 +40,7 @@ enum AppSortOrder: String, CaseIterable, Sendable {
         switch self {
         case .recentlyUsed: return "Recently used (⌘-Tab order)"
         case .name: return "By name (A → Z)"
+        case .dockPosition: return "By Dock position"
         }
     }
 
@@ -43,6 +51,8 @@ enum AppSortOrder: String, CaseIterable, Sendable {
             return "Order apps the way ⌘-Tab does — most recently used first, from the top clockwise."
         case .name:
             return "Sort apps alphabetically, so each keeps a fixed spot in the wheel."
+        case .dockPosition:
+            return "Order apps to match their position in the Dock, from the top clockwise."
         }
     }
 
@@ -101,4 +111,77 @@ enum WindowSortOrder: String, CaseIterable, Sendable {
         }
         return order
     }
+}
+
+/// The Dock's left-to-right app order — the data behind the `.dockPosition` app sort
+/// (Bringr-93j.55) — plus the "Keep Finder last" toggle that modifies it. The order is
+/// read live from the Dock's own preferences at each summon (like every other setting),
+/// and the toggle is persisted here since it only ever reshapes this order.
+enum DockOrder {
+    /// Finder's bundle id. The Dock pins Finder to its first slot — it can't be moved or
+    /// removed — so Finder leads the Dock order unless "Keep Finder last" sends it to the end.
+    static let finderBundleID = "com.apple.finder"
+
+    /// `UserDefaults` key for the "Keep Finder last" toggle. Only meaningful when the app
+    /// sort order is `.dockPosition`; Preferences shows the checkbox only then.
+    static let keepFinderLastKey = "sortOrder.apps.keepFinderLast"
+
+    /// Default for "Keep Finder last": off, so Finder takes its real (first) Dock slot.
+    static let keepFinderLastDefault = false
+
+    /// The persisted "Keep Finder last" flag, falling back to the default when unset.
+    static func keepsFinderLast(from defaults: UserDefaults = .standard) -> Bool {
+        guard defaults.object(forKey: keepFinderLastKey) != nil else { return keepFinderLastDefault }
+        return defaults.bool(forKey: keepFinderLastKey)
+    }
+
+    /// The Dock's app order as bundle identifiers, left to right: Finder first (its pinned,
+    /// immovable first slot), then the Dock's persistent (pinned) apps in order. Read live
+    /// from the `com.apple.dock` `persistent-apps` preference — the same data the Dock lays
+    /// itself out from — so nothing about Dock order is tracked by Bringr. Falls back to just
+    /// `[finderBundleID]` if those prefs can't be read (every other app then trails as "not
+    /// pinned", a harmless degradation). This is the untestable live shell; the pure ordering
+    /// in `sorted(_:bundleID:dockOrder:keepFinderLast:)` is unit-tested with injected orders.
+    static func current() -> [String] {
+        let pinned = UserDefaults(suiteName: "com.apple.dock")?
+            .array(forKey: "persistent-apps") as? [[String: Any]] ?? []
+        let pinnedIDs = pinned.compactMap { entry in
+            (entry["tile-data"] as? [String: Any])?["bundle-identifier"] as? String
+        }
+        return [finderBundleID] + pinnedIDs
+    }
+
+    /// Sort `items` to match the Dock order. Each item resolves to a bundle id via `bundleID`;
+    /// items whose id is in `dockOrder` sort by that position, and items not in the Dock
+    /// (running but not pinned) trail at the end in their original relative order — a stable
+    /// sort, so equal ranks keep their incoming arrangement. `keepFinderLast` overrides
+    /// Finder's natural first slot, sending it to the very end (after even the unpinned apps),
+    /// for users who don't want the always-first Finder tile hogging twelve o'clock. Pure, so
+    /// it's unit-tested directly; `WindowEnumerator` and `MyAppsMenu` feed it the live order.
+    static func sorted<Item>(
+        _ items: [Item],
+        bundleID: (Item) -> String?,
+        dockOrder: [String],
+        keepFinderLast: Bool
+    ) -> [Item] {
+        let rankByID = Dictionary(
+            dockOrder.enumerated().map { ($0.element, $0.offset) },
+            uniquingKeysWith: { first, _ in first }
+        )
+        func rank(_ item: Item) -> Int {
+            guard let id = bundleID(item) else { return notPinnedRank }
+            if keepFinderLast && id == finderBundleID { return finderLastRank }
+            return rankByID[id] ?? notPinnedRank
+        }
+        return items.enumerated().sorted { lhs, rhs in
+            let lhsRank = rank(lhs.element)
+            let rhsRank = rank(rhs.element)
+            return lhsRank == rhsRank ? lhs.offset < rhs.offset : lhsRank < rhsRank
+        }.map(\.element)
+    }
+
+    /// Apps not pinned to the Dock trail after the pinned block...
+    private static let notPinnedRank = Int.max - 1
+    /// ...and Finder, when "Keep Finder last" is on, goes after even those.
+    private static let finderLastRank = Int.max
 }

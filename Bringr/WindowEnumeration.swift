@@ -123,6 +123,14 @@ final class WindowEnumerator {
     /// (mirroring `RevealStrategy.current`), while tests inject fixed orders.
     private let appOrder: () -> AppSortOrder
     private let windowOrder: () -> WindowSortOrder
+    /// The Dock's app order and the "Keep Finder last" flag for the `.dockPosition` sort
+    /// (Bringr-93j.55), read through closures so each summon picks up the live Dock order and
+    /// persisted toggle fresh (mirroring `appOrder`); tests inject fixed values. `appBundleID`
+    /// resolves a grouped app's pid to its bundle id (the key the Dock order is in) and is
+    /// only ever called on the `.dockPosition` path, so the other orders pay nothing for it.
+    private let dockOrder: () -> [String]
+    private let keepFinderLast: () -> Bool
+    private let appBundleID: (pid_t) -> String?
     /// Bringr's own recent-use order (Bringr-93j.46). When present, the `.recentlyUsed`
     /// sort is driven by this persisted MRU instead of the live z-order, so previewing —
     /// which perturbs the live z-order — no longer reshuffles the order between summons.
@@ -153,11 +161,19 @@ final class WindowEnumerator {
         source: WindowEnumerationSource? = nil,
         appOrder: @escaping () -> AppSortOrder = { AppSortOrder.current() },
         windowOrder: @escaping () -> WindowSortOrder = { WindowSortOrder.current() },
+        dockOrder: @escaping () -> [String] = { DockOrder.current() },
+        keepFinderLast: @escaping () -> Bool = { DockOrder.keepsFinderLast() },
+        appBundleID: @escaping (pid_t) -> String? = {
+            NSRunningApplication(processIdentifier: $0)?.bundleIdentifier
+        },
         recency: RecencyTracker? = nil
     ) {
         self.source = source ?? CGWindowSource()
         self.appOrder = appOrder
         self.windowOrder = windowOrder
+        self.dockOrder = dockOrder
+        self.keepFinderLast = keepFinderLast
+        self.appBundleID = appBundleID
         self.recency = recency
     }
 
@@ -320,6 +336,14 @@ final class WindowEnumerator {
                 case .orderedSame: return lhs.id.pid < rhs.id.pid
                 }
             }
+        case .dockPosition:
+            // Match the Dock's left-to-right order; apps not pinned to the Dock trail
+            // after the pinned block (Bringr-93j.55). `appBundleID` resolves each app's
+            // pid to the bundle id the Dock order is keyed on.
+            return DockOrder.sorted(
+                windowsSorted, bundleID: { appBundleID($0.id.pid) },
+                dockOrder: dockOrder(), keepFinderLast: keepFinderLast()
+            )
         }
     }
 

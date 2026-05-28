@@ -60,6 +60,35 @@ final class MyAppsMenuSortingTests: XCTestCase {
                        "running entries take their live z-order; the not-running Mail trails")
     }
 
+    // MARK: - Off + Dock position: curated entries sort by their slot in the Dock
+
+    func testNotKeepingOrderSortsCuratedAppsByDockPosition() {
+        // None running: `.dockPosition` sorts every entry by its bundle id's Dock slot, so
+        // the manual order (Telegram, Chrome, Mail) becomes the Dock order (Chrome, Mail,
+        // Telegram) regardless of running state.
+        let enumerator = WindowEnumerator(
+            source: stub([]), appOrder: { .dockPosition }, windowOrder: { .recentlyUsed },
+            dockOrder: { [] }, keepFinderLast: { false }, appBundleID: { _ in nil }
+        )
+        let curated = [
+            CuratedApp(bundleIdentifier: "org.telegram.desktop", name: "Telegram"),
+            CuratedApp(bundleIdentifier: "com.google.Chrome", name: "Chrome"),
+            CuratedApp(bundleIdentifier: "com.apple.Mail", name: "Mail")
+        ]
+        let menu = MyAppsMenu(
+            enumerator: enumerator,
+            curatedApps: { curated },
+            showOtherRunningApps: { false },
+            keepCuratedOrder: { false },
+            appSortOrder: { .dockPosition },
+            dockOrder: { [DockOrder.finderBundleID, "com.google.Chrome", "com.apple.Mail", "org.telegram.desktop"] },
+            keepFinderLast: { false },
+            runningPID: { _ in nil }
+        )
+
+        XCTAssertEqual(menu.makeRoot().resolvedChildren().map(\.title), ["Chrome", "Mail", "Telegram"])
+    }
+
     // MARK: - On (the default): the Apps sort order is ignored for the curated block
 
     func testKeepingOrderIgnoresAppSortOrder() {

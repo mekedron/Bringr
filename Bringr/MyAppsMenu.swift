@@ -48,6 +48,13 @@ struct MyAppsMenu: MenuDefinition {
     /// `WindowEnumerator` already applies to `live`, so the two agree in production); tests
     /// inject a fixed order.
     private let appSortOrder: () -> AppSortOrder
+    /// The Dock's app order and the "Keep Finder last" flag, used only when `appSortOrder`
+    /// is `.dockPosition` to reorder the curated block to match the Dock (Bringr-93j.55).
+    /// Read fresh per summon (the live defaults are the same ones `WindowEnumerator` uses for
+    /// the appended others, so the curated block and the others agree); tests inject fixed
+    /// values.
+    private let dockOrder: () -> [String]
+    private let keepFinderLast: () -> Bool
 
     init(
         enumerator: WindowEnumerator,
@@ -55,6 +62,8 @@ struct MyAppsMenu: MenuDefinition {
         showOtherRunningApps: @escaping () -> Bool = { CuratedApps.showsOtherRunningApps() },
         keepCuratedOrder: @escaping () -> Bool = { CuratedApps.keepsCuratedOrder() },
         appSortOrder: @escaping () -> AppSortOrder = { AppSortOrder.current() },
+        dockOrder: @escaping () -> [String] = { DockOrder.current() },
+        keepFinderLast: @escaping () -> Bool = { DockOrder.keepsFinderLast() },
         runningPID: @escaping (String) -> pid_t? = {
             CuratedApp.runningApplication(forBundleIdentifier: $0)?.processIdentifier
         }
@@ -65,6 +74,8 @@ struct MyAppsMenu: MenuDefinition {
         self.showOtherRunningApps = showOtherRunningApps
         self.keepCuratedOrder = keepCuratedOrder
         self.appSortOrder = appSortOrder
+        self.dockOrder = dockOrder
+        self.keepFinderLast = keepFinderLast
         self.runningPID = runningPID
     }
 
@@ -84,6 +95,8 @@ struct MyAppsMenu: MenuDefinition {
         let runningPID = self.runningPID
         let keepCuratedOrder = self.keepCuratedOrder
         let appSortOrder = self.appSortOrder
+        let dockOrder = self.dockOrder
+        let keepFinderLast = self.keepFinderLast
         // The ring reads at `appsScope`; each app node carries `windowsScope` for its
         // sub-wheel, so the two levels stay independently scoped (Bringr-93j.48), matching
         // the raw wheel.
@@ -103,7 +116,10 @@ struct MyAppsMenu: MenuDefinition {
                 // reorder the curated block when the user turned that off (Bringr-93j.43).
                 let orderedCurated = keepCuratedOrder()
                     ? curated
-                    : Self.ordered(curated, live: live, runningPID: runningPID, by: appSortOrder())
+                    : Self.ordered(
+                        curated, live: live, runningPID: runningPID, by: appSortOrder(),
+                        dock: (order: dockOrder(), finderLast: keepFinderLast())
+                    )
                 let curatedNodes = orderedCurated.map {
                     Self.node(
                         for: $0, live: live, windowsScope: windowsScope,
@@ -155,14 +171,20 @@ struct MyAppsMenu: MenuDefinition {
     /// entry alphabetically — the only key a not-running app has. `.recentlyUsed` follows the
     /// front-to-back order the screen-scoped enumeration already imposes: each running entry
     /// takes its position in `live`, and entries with no window on this screen (not running,
-    /// or running on another display — no `live` position) fall to the end. Both branches
-    /// break ties by the entry's original index, so the sort is stable and equal keys keep
-    /// the user's manual arrangement.
+    /// or running on another display — no `live` position) fall to the end. `.dockPosition`
+    /// sorts every entry (running or not) by its bundle id's slot in the Dock order, which
+    /// each `CuratedApp` carries directly (Bringr-93j.55). All branches break ties by the
+    /// entry's original index, so the sort is stable and equal keys keep the manual order.
     private static func ordered(
         _ curated: [CuratedApp], live: [AppWindows], runningPID: (String) -> pid_t?,
-        by order: AppSortOrder
+        by order: AppSortOrder, dock: (order: [String], finderLast: Bool)
     ) -> [CuratedApp] {
         switch order {
+        case .dockPosition:
+            return DockOrder.sorted(
+                curated, bundleID: { $0.bundleIdentifier },
+                dockOrder: dock.order, keepFinderLast: dock.finderLast
+            )
         case .name:
             return curated.enumerated().sorted { lhs, rhs in
                 switch lhs.element.name.localizedCaseInsensitiveCompare(rhs.element.name) {
