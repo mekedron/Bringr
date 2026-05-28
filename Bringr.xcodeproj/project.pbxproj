@@ -54,6 +54,9 @@
 		1A000000000000000000006F /* Dimming.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1A0000000000000000000070 /* Dimming.swift */; };
 		1A0000000000000000000071 /* RevealStrategyTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1A0000000000000000000072 /* RevealStrategyTests.swift */; };
 		1A000000000000000000007A /* SortOrder.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1A0000000000000000000079 /* SortOrder.swift */; };
+		1A000000000000000000007C /* CuratedApps.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1A000000000000000000007B /* CuratedApps.swift */; };
+		1A000000000000000000007E /* CuratedAppsTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1A000000000000000000007D /* CuratedAppsTests.swift */; };
+		1A0000000000000000000080 /* MyAppsEditor.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1A000000000000000000007F /* MyAppsEditor.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -116,6 +119,9 @@
 		1A000000000000000000005D /* RadialAppearance.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RadialAppearance.swift; sourceTree = "<group>"; };
 		1A000000000000000000005F /* RadialAppearanceTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RadialAppearanceTests.swift; sourceTree = "<group>"; };
 		1A0000000000000000000079 /* SortOrder.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SortOrder.swift; sourceTree = "<group>"; };
+		1A000000000000000000007B /* CuratedApps.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CuratedApps.swift; sourceTree = "<group>"; };
+		1A000000000000000000007D /* CuratedAppsTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CuratedAppsTests.swift; sourceTree = "<group>"; };
+		1A000000000000000000007F /* MyAppsEditor.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MyAppsEditor.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -182,6 +188,8 @@
 				1A000000000000000000006E /* RevealStrategy.swift */,
 				1A0000000000000000000070 /* Dimming.swift */,
 				1A0000000000000000000079 /* SortOrder.swift */,
+				1A000000000000000000007B /* CuratedApps.swift */,
+				1A000000000000000000007F /* MyAppsEditor.swift */,
 			);
 			path = Bringr;
 			sourceTree = "<group>";
@@ -211,6 +219,7 @@
 				1A000000000000000000005B /* RevealStateTests.swift */,
 				1A000000000000000000005F /* RadialAppearanceTests.swift */,
 				1A0000000000000000000072 /* RevealStrategyTests.swift */,
+				1A000000000000000000007D /* CuratedAppsTests.swift */,
 			);
 			path = BringrTests;
 			sourceTree = "<group>";
@@ -338,6 +347,8 @@
 				1A000000000000000000006D /* RevealStrategy.swift in Sources */,
 				1A000000000000000000006F /* Dimming.swift in Sources */,
 				1A000000000000000000007A /* SortOrder.swift in Sources */,
+				1A000000000000000000007C /* CuratedApps.swift in Sources */,
+				1A0000000000000000000080 /* MyAppsEditor.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -367,6 +378,7 @@
 				1A000000000000000000005C /* RevealStateTests.swift in Sources */,
 				1A0000000000000000000060 /* RadialAppearanceTests.swift in Sources */,
 				1A0000000000000000000071 /* RevealStrategyTests.swift in Sources */,
+				1A000000000000000000007E /* CuratedAppsTests.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

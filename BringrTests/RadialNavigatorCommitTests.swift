@@ -207,8 +207,16 @@ final class RadialNavigatorCommitTests: XCTestCase {
             raw(number: 21, pid: 20, name: "Ghostty", title: "Terminal")
         ]
         let source = StubEnumerationSource(selfPID: 1, windows: raws)
-        let appNodes = WindowSwitcherMenu(enumerator: WindowEnumerator(source: source))
-            .makeRoot().resolvedChildren()
+        // Pin the sort order so these tests stay hermetic — the default `WindowEnumerator`
+        // closures read `.standard`, where a developer's persisted Preferences (e.g. a
+        // "Fixed position" window order) would otherwise reorder the windows out from under
+        // the front-to-back assumptions below.
+        let enumerator = WindowEnumerator(
+            source: source,
+            appOrder: { .recentlyUsed },
+            windowOrder: { .recentlyUsed }
+        )
+        let appNodes = WindowSwitcherMenu(enumerator: enumerator).makeRoot().resolvedChildren()
         let fake = FakeWindowSystem(
             apps: [
                 FakeWindowSystem.AppState(id: AppID(pid: 10), hidden: false,

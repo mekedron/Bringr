@@ -44,6 +44,7 @@ struct PreferencesView: View {
                 section("Interaction") { interactionSection }
                 section("Reveal") { revealSection }
                 section("Sorting") { sortingSection }
+                section("My Apps") { MyAppsEditor() }
                 section("Appearance") { appearanceSection }
             }
             .padding(28)
