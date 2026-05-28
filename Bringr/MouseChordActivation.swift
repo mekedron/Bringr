@@ -175,6 +175,9 @@ final class MouseChordMonitor {
     private var detector: MouseChordDetector
     private let onChord: () -> Void
     private let onChordReleased: () -> Void
+    /// Whether the left+right chord is the mouse's active trigger right now, read fresh
+    /// each event so switching the mouse to modifier keys takes effect at once (Bringr-93j.35).
+    private let isEnabled: () -> Bool
 
     private var eventTap: CFMachPort?
     private var runLoopSource: CFRunLoopSource?
@@ -197,10 +200,12 @@ final class MouseChordMonitor {
 
     init(
         threshold: TimeInterval = 0.12,
+        isEnabled: @escaping () -> Bool = { true },
         onChord: @escaping () -> Void,
         onChordReleased: @escaping () -> Void = {}
     ) {
         self.detector = MouseChordDetector(threshold: threshold)
+        self.isEnabled = isEnabled
         self.onChord = onChord
         self.onChordReleased = onChordReleased
     }
@@ -271,6 +276,14 @@ final class MouseChordMonitor {
         // The system disables a slow/over-budget tap; re-enable and pass through.
         if type == .tapDisabledByTimeout || type == .tapDisabledByUserInput {
             if let eventTap { CGEvent.tapEnable(tap: eventTap, enable: true) }
+            return Unmanaged.passUnretained(event)
+        }
+
+        // The mouse may be set to a modifier-key trigger instead of the chord; if so,
+        // flush any half-buffered press and let every click through untouched (Bringr-93j.35).
+        if !isEnabled() {
+            if !heldEvents.isEmpty { replayHeldEvents() }
+            detector.reset()
             return Unmanaged.passUnretained(event)
         }
 

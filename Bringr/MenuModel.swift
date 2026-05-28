@@ -82,8 +82,9 @@ struct MenuNode: Identifiable {
 enum MenuTrigger: Hashable, Sendable {
     /// Simultaneous left+right mouse press (US-007).
     case mouseChord
-    /// Three-finger trackpad press (US-008).
-    case threeFingerPress
+    /// A held modifier-key combination — the mouse's modifier-key option and the
+    /// trackpad's only trigger (Bringr-93j.35), replacing the three-finger press.
+    case modifierHold
 }
 
 /// An instantiable menu definition: it knows how to build a fresh tree each time

@@ -25,11 +25,21 @@ struct PreferencesView: View {
     /// next open without a relaunch.
     @AppStorage(AppSortOrder.defaultsKey) private var appSortOrderRaw = AppSortOrder.default.rawValue
     @AppStorage(WindowSortOrder.defaultsKey) private var windowSortOrderRaw = WindowSortOrder.default.rawValue
+    /// How the mouse and trackpad summon the menu (Bringr-93j.35). The same keys are read
+    /// fresh by the activation monitors, so a change here takes effect with no relaunch.
+    @AppStorage(MouseActivationMethod.defaultsKey)
+    private var mouseMethodRaw = MouseActivationMethod.default.rawValue
+    @AppStorage(ModifierActivation.mouseDefaultsKey)
+    private var mouseModifiersRaw = ModifierActivation.mouseDefault.rawValue
+    @AppStorage(ModifierActivation.trackpadDefaultsKey)
+    private var trackpadModifiersRaw = ModifierActivation.trackpadDefault.rawValue
 
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 18) {
                 section("Permissions", isFirst: true) { permissionSection }
+                section("Mouse") { mouseSection }
+                section("Trackpad") { trackpadSection }
                 section("Startup") { startupSection }
                 section("Interaction") { interactionSection }
                 section("Reveal") { revealSection }
@@ -73,6 +83,53 @@ struct PreferencesView: View {
             )
 
             Text("Bringr starts automatically when you log in and runs in the menu bar.")
+                .font(.callout)
+                .foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+    }
+
+    private var mouseSection: some View {
+        let method = MouseActivationMethod(rawValue: mouseMethodRaw) ?? .default
+        return VStack(alignment: .leading, spacing: 10) {
+            Picker("Activate with:", selection: $mouseMethodRaw) {
+                ForEach(MouseActivationMethod.allCases, id: \.rawValue) { method in
+                    Text(method.displayName).tag(method.rawValue)
+                }
+            }
+            .pickerStyle(.radioGroup)
+
+            ModifierKeysPicker(rawValue: $mouseModifiersRaw)
+                .disabled(method != .modifierKeys)
+                .opacity(method == .modifierKeys ? 1 : 0.4)
+
+            Text(mouseHelp(method: method))
+                .font(.callout)
+                .foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+    }
+
+    private func mouseHelp(method: MouseActivationMethod) -> String {
+        switch method {
+        case .leftRightClick:
+            return "Press the left and right mouse buttons together to summon the wheel."
+        case .modifierKeys:
+            let combo = ModifierCombination(rawValue: mouseModifiersRaw).intersection(.all)
+            return combo.isEmpty
+                ? "Pick one or more modifier keys to hold. Until then, the mouse can't summon the wheel."
+                : "Hold \(combo.names) to summon the wheel, then release to choose."
+        }
+    }
+
+    private var trackpadSection: some View {
+        let combo = ModifierCombination(rawValue: trackpadModifiersRaw).intersection(.all)
+        return VStack(alignment: .leading, spacing: 10) {
+            ModifierKeysPicker(rawValue: $trackpadModifiersRaw)
+
+            Text(combo.isEmpty
+                 ? "Pick one or more modifier keys to hold. Until then, the trackpad can't summon the wheel."
+                 : "Hold \(combo.names) to summon the wheel — no click or tap needed — then release to choose.")
                 .font(.callout)
                 .foregroundStyle(.secondary)
                 .fixedSize(horizontal: false, vertical: true)
@@ -206,6 +263,32 @@ struct PreferencesView: View {
             }
             .padding(.top, 4)
         }
+    }
+}
+
+/// A row of checkboxes for the five modifier keys, backed by a bitmask in `UserDefaults`
+/// so any combination round-trips through one `@AppStorage` value (Bringr-93j.35).
+private struct ModifierKeysPicker: View {
+    @Binding var rawValue: Int
+
+    var body: some View {
+        HStack(spacing: 14) {
+            ForEach(ModifierCombination.keys) { key in
+                Toggle(key.name, isOn: binding(for: key.modifier))
+                    .toggleStyle(.checkbox)
+            }
+        }
+    }
+
+    private func binding(for modifier: ModifierCombination) -> Binding<Bool> {
+        Binding(
+            get: { ModifierCombination(rawValue: rawValue).contains(modifier) },
+            set: { isOn in
+                var combo = ModifierCombination(rawValue: rawValue).intersection(.all)
+                if isOn { combo.insert(modifier) } else { combo.remove(modifier) }
+                rawValue = combo.rawValue
+            }
+        )
     }
 }
 

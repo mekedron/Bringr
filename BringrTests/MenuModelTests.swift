@@ -70,9 +70,9 @@ final class MenuModelTests: XCTestCase {
         registry.register(menu, for: .mouseChord)
 
         XCTAssertNotNil(registry.definition(for: .mouseChord))
-        XCTAssertNil(registry.definition(for: .threeFingerPress))
+        XCTAssertNil(registry.definition(for: .modifierHold))
         XCTAssertNotNil(registry.makeMenu(for: .mouseChord))
-        XCTAssertNil(registry.makeMenu(for: .threeFingerPress))
+        XCTAssertNil(registry.makeMenu(for: .modifierHold))
     }
 
     func testOneDefinitionCanAnswerMultipleTriggers() {
@@ -80,10 +80,10 @@ final class MenuModelTests: XCTestCase {
         let menu = WindowSwitcherMenu(enumerator: WindowEnumerator(source: source))
         let registry = MenuRegistry()
         registry.register(menu, for: .mouseChord)
-        registry.register(menu, for: .threeFingerPress)
+        registry.register(menu, for: .modifierHold)
 
         XCTAssertNotNil(registry.makeMenu(for: .mouseChord))
-        XCTAssertNotNil(registry.makeMenu(for: .threeFingerPress))
+        XCTAssertNotNil(registry.makeMenu(for: .modifierHold))
     }
 
     func testMakeMenuBuildsFreshTreeEachSummon() {

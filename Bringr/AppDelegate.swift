@@ -18,9 +18,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var permissionAlertWindow: PermissionAlertWindow?
     /// Global left+right mouse-chord activation (US-007). `nil` under XCTest.
     private var activationMonitor: MouseChordMonitor?
-    /// Global three-finger trackpad-press activation (US-008). `nil` under XCTest,
-    /// or when MultitouchSupport / a trackpad is unavailable on the host.
-    private var trackpadMonitor: ThreeFingerMonitor?
+    /// Global modifier-key hold activation (Bringr-93j.35) — the trackpad's trigger and
+    /// the mouse's modifier-key option, replacing the three-finger press. `nil` under XCTest.
+    private var modifierMonitor: ModifierHoldMonitor?
     private var trustCancellable: AnyCancellable?
 
     func applicationDidFinishLaunching(_ notification: Notification) {
@@ -32,7 +32,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         permissions.startMonitoring()
         prewarmRadialMenu()
         startActivationMonitor()
-        startTrackpadMonitor()
+        startModifierMonitor()
 
         let suppressed = UserDefaults.standard.bool(forKey: PermissionAlertWindow.suppressDefaultsKey)
         if AppDelegate.shouldPresentPermissionAlert(isTrusted: permissions.isTrusted, suppressed: suppressed) {
@@ -48,7 +48,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         let switcher = WindowSwitcherMenu(enumerator: enumerator)
         let registry = MenuRegistry()
         registry.register(switcher, for: .mouseChord)
-        registry.register(switcher, for: .threeFingerPress)
+        registry.register(switcher, for: .modifierHold)
 
         // A store-backed controller journals each reveal to disk; replay any reveal a
         // prior crash left stranded before the first summon (US-015 AC3). The live
@@ -63,6 +63,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     /// retry the instant `PermissionsManager` reports trust, with no relaunch.
     private func startActivationMonitor() {
         let monitor = MouseChordMonitor(
+            isEnabled: { MouseActivationMethod.current() == .leftRightClick },
             onChord: { [weak self] in
                 guard let self, let radialMenu = self.radialMenu else { return }
                 radialMenu.triggerPressed(for: .mouseChord, at: NSEvent.mouseLocation)
@@ -77,29 +78,28 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         trustCancellable = permissions.$isTrusted
             .sink { [weak self] trusted in
                 guard trusted, let self else { return }
-                // Order matters: start the chord tap first, then the trackpad tap, so
-                // the trackpad tap is inserted at the head of the chain and sees a
-                // three-finger click before the chord tap can buffer it (Bringr-93j.23).
+                // Both taps need Accessibility permission, so retry them the instant the
+                // user grants it — no relaunch (US-002).
                 self.activationMonitor?.start()
-                self.trackpadMonitor?.start()
+                self.modifierMonitor?.start()
             }
     }
 
-    /// Install the global three-finger trackpad monitor (US-008). Unlike the mouse
-    /// tap, MultitouchSupport needs no Accessibility permission, so it starts
-    /// outright; if the framework or a trackpad is missing it degrades gracefully
-    /// (logs, no crash) and three-finger activation is simply unavailable.
-    private func startTrackpadMonitor() {
-        let monitor = ThreeFingerMonitor(
+    /// Install the global modifier-key hold monitor (Bringr-93j.35) — the trackpad's
+    /// trigger and the mouse's modifier-key option. Like the mouse-chord tap it needs
+    /// Accessibility permission, so it may fail on first launch of an untrusted build and
+    /// is retried the moment trust is granted; it never consumes a modifier key.
+    private func startModifierMonitor() {
+        let monitor = ModifierHoldMonitor(
             onPress: { [weak self] in
                 guard let self, let radialMenu = self.radialMenu else { return }
-                radialMenu.triggerPressed(for: .threeFingerPress, at: NSEvent.mouseLocation)
+                radialMenu.triggerPressed(for: .modifierHold, at: NSEvent.mouseLocation)
             },
             onRelease: { [weak self] in
                 self?.radialMenu?.triggerReleased(at: NSEvent.mouseLocation)
             }
         )
-        trackpadMonitor = monitor
+        modifierMonitor = monitor
         monitor.start()
     }
 
