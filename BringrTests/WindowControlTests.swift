@@ -16,6 +16,13 @@ final class WindowControlTests: XCTestCase {
 
         controller.raiseAndFocus(target)
 
+        XCTAssertEqual(fake.operationLog, [
+            .raise(target),
+            .activate(appA),
+            .focusWindow(target),
+            .raise(target),
+            .focusWindow(target)
+        ])
         XCTAssertEqual(fake.frontmost, appA)
         XCTAssertEqual(fake.focusedWindow, target)
         XCTAssertEqual(fake.windows(of: appA).first, target)
@@ -284,6 +291,41 @@ final class WindowControlTests: XCTestCase {
         XCTAssertEqual(fake.windows(of: target).first, targetWindow)
     }
 
+    func testCommitFocusesTargetAfterRestoredFrontSiblingIsRaised() {
+        let appA = AppID(pid: 1)
+        let frontSibling = WindowID(app: appA, token: 10)
+        let target = WindowID(app: appA, token: 11)
+        let fake = FakeWindowSystem(
+            apps: [makeApp(1, windowTokens: [10, 11])],
+            frontmost: appA
+        )
+        let controller = WindowController(system: fake)
+        controller.hideOtherWindows(besides: target)
+        fake.clearLog()
+
+        controller.commit(target)
+
+        let operations = fake.operationLog
+        XCTAssertEqual(fake.windows(of: appA).first, target)
+        XCTAssertEqual(fake.focusedWindow, target)
+        XCTAssertEqual(fake.activationLog, [appA])
+        XCTAssertEqual(Array(operations.suffix(3)), [
+            .focusWindow(target),
+            .raise(target),
+            .focusWindow(target)
+        ])
+        XCTAssertLessThan(
+            operations.firstIndex(of: .raise(target)) ?? -1,
+            operations.firstIndex(of: .activate(appA)) ?? -1,
+            "the selected window must be AX-raised before app activation so the old front app cannot keep the global front layer"
+        )
+        XCTAssertLessThan(
+            operations.firstIndex(of: .raise(frontSibling)) ?? -1,
+            operations.lastIndex(of: .raise(target)) ?? -1,
+            "the restored original front sibling must be raised before the chosen window wins"
+        )
+    }
+
     // MARK: - Fixtures
 
     private func makeApp(
@@ -296,104 +338,5 @@ final class WindowControlTests: XCTestCase {
             FakeWindowSystem.WindowState(id: WindowID(app: appID, token: $0), minimized: false)
         }
         return FakeWindowSystem.AppState(id: appID, hidden: hidden, windows: windows)
-    }
-}
-
-/// In-memory `WindowControlling` for tests: models app visibility/z-order and
-/// per-app window minimized-state/z-order, with no live system dependency.
-@MainActor
-final class FakeWindowSystem: WindowControlling {
-    final class WindowState {
-        let id: WindowID
-        var minimized: Bool
-        init(id: WindowID, minimized: Bool) {
-            self.id = id
-            self.minimized = minimized
-        }
-    }
-
-    final class AppState {
-        let id: AppID
-        var hidden: Bool
-        var windows: [WindowState]
-        init(id: AppID, hidden: Bool, windows: [WindowState]) {
-            self.id = id
-            self.hidden = hidden
-            self.windows = windows
-        }
-    }
-
-    var apps: [AppState]
-    var frontmost: AppID?
-    private(set) var focusedWindow: WindowID?
-    /// Apps passed to `activate` / `windows(of:)`, in call order — lets a test assert
-    /// the commit ordering (no prior-frontmost re-activation; target cache refreshed).
-    private(set) var activationLog: [AppID] = []
-    private(set) var enumerationLog: [AppID] = []
-
-    init(apps: [AppState], frontmost: AppID?) {
-        self.apps = apps
-        self.frontmost = frontmost
-    }
-
-    func clearLog() {
-        activationLog = []
-        enumerationLog = []
-    }
-
-    private func appState(_ id: AppID) -> AppState? {
-        apps.first { $0.id == id }
-    }
-
-    private func windowState(_ id: WindowID) -> WindowState? {
-        appState(id.app)?.windows.first { $0.id == id }
-    }
-
-    func runningApps() -> [AppID] {
-        apps.map { $0.id }
-    }
-
-    func windows(of app: AppID) -> [WindowID] {
-        enumerationLog.append(app)
-        return appState(app)?.windows.map { $0.id } ?? []
-    }
-
-    func frontmostApp() -> AppID? {
-        frontmost
-    }
-
-    func isHidden(_ app: AppID) -> Bool {
-        appState(app)?.hidden ?? false
-    }
-
-    func setHidden(_ app: AppID, _ hidden: Bool) {
-        appState(app)?.hidden = hidden
-    }
-
-    func activate(_ app: AppID) {
-        activationLog.append(app)
-        frontmost = app
-        guard let index = apps.firstIndex(where: { $0.id == app }) else { return }
-        let state = apps.remove(at: index)
-        apps.insert(state, at: 0)
-    }
-
-    func isMinimized(_ window: WindowID) -> Bool {
-        windowState(window)?.minimized ?? false
-    }
-
-    func setMinimized(_ window: WindowID, _ minimized: Bool) {
-        windowState(window)?.minimized = minimized
-    }
-
-    func raise(_ window: WindowID) {
-        guard let app = appState(window.app),
-              let index = app.windows.firstIndex(where: { $0.id == window }) else { return }
-        let state = app.windows.remove(at: index)
-        app.windows.insert(state, at: 0)
-    }
-
-    func focusWindow(_ window: WindowID) {
-        focusedWindow = window
     }
 }

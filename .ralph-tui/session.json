@@ -3,10 +3,10 @@
   "sessionId": "acbe5cb7-4f38-4700-8c1e-4947c4db4521",
   "status": "running",
   "startedAt": "2026-05-28T15:11:17.160Z",
-  "updatedAt": "2026-05-28T15:20:11.298Z",
-  "currentIteration": 0,
+  "updatedAt": "2026-05-28T15:37:20.004Z",
+  "currentIteration": 1,
   "maxIterations": 10,
-  "tasksCompleted": 0,
+  "tasksCompleted": 1,
   "isPaused": false,
   "agentPlugin": "claude",
   "trackerState": {
@@ -146,12 +146,23 @@
       {
         "id": "Bringr-93j.20",
         "title": "Three-finger gesture fires on tap/rest instead of requiring an actual click",
-        "status": "open",
-        "completedInSession": false
+        "status": "completed",
+        "completedInSession": true
       }
     ]
   },
-  "iterations": [],
+  "iterations": [
+    {
+      "iteration": 1,
+      "status": "completed",
+      "taskId": "Bringr-93j.20",
+      "taskTitle": "Three-finger gesture fires on tap/rest instead of requiring an actual click",
+      "taskCompleted": true,
+      "durationMs": 521417,
+      "startedAt": "2026-05-28T15:11:28.476Z",
+      "endedAt": "2026-05-28T15:20:09.893Z"
+    }
+  ],
   "skippedTaskIds": [],
   "cwd": "/Users/nikita/Projects/Bringr",
   "activeTaskIds": [],

@@ -1,0 +1,168 @@
+import AppKit
+import XCTest
+@testable import Bringr
+
+/// Covers the while-open monitor wiring for the radial menu (Bringr-93j.19): hover
+/// must be driven by BOTH a global and a local NSEvent monitor so it keeps working
+/// after the interaction mode is switched to click-to-stay, where cursor moves are
+/// delivered to our own overlay and a global-only monitor never fires.
+///
+/// The live monitors can't be exercised without a real event stream, so an injected
+/// `EventMonitorInstaller` records exactly what the controller wires up on summon.
+@MainActor
+final class RadialMenuControllerHoverTests: XCTestCase {
+
+    // MARK: - The regression: hover wiring in both modes
+
+    func testHoverWiredWithGlobalAndLocalMonitorsInBothModes() {
+        for mode in InteractionMode.allCases {
+            let recorder = MonitorRecorder()
+            let controller = makeController(mode: mode, installer: recorder.installer())
+
+            controller.triggerPressed(for: .mouseChord, at: CGPoint(x: 100, y: 100))
+
+            let hoverMonitors = recorder.installed.filter { $0.mask.contains(.mouseMoved) }
+            XCTAssertTrue(
+                hoverMonitors.contains { $0.kind == .global },
+                "\(mode): hover needs a global monitor (hold-to-select path)"
+            )
+            XCTAssertTrue(
+                hoverMonitors.contains { $0.kind == .local },
+                "\(mode): hover needs a local monitor (click-to-stay path) — the regression"
+            )
+        }
+    }
+
+    func testLocalHoverMonitorPassesEventsThrough() {
+        let recorder = MonitorRecorder()
+        let controller = makeController(mode: .clickToStay, installer: recorder.installer())
+        controller.triggerPressed(for: .mouseChord, at: CGPoint(x: 100, y: 100))
+
+        guard let localHover = recorder.installed.first(where: {
+            $0.kind == .local && $0.mask.contains(.mouseMoved)
+        })?.localHandler else {
+            return XCTFail("expected a local hover monitor")
+        }
+        guard let moved = NSEvent.mouseEvent(
+            with: .mouseMoved, location: .zero, modifierFlags: [], timestamp: 0,
+            windowNumber: 0, context: nil, eventNumber: 0, clickCount: 0, pressure: 0
+        ) else {
+            return XCTFail("could not synthesise a mouseMoved event")
+        }
+        // The local monitor must return the event so the overlay's SwiftUI gesture and
+        // the app underneath still see it — consuming it would break clicks/tracking.
+        XCTAssertTrue(localHover(moved) === moved)
+    }
+
+    func testDismissMonitorIsGlobalOnly() {
+        let recorder = MonitorRecorder()
+        let controller = makeController(mode: .clickToStay, installer: recorder.installer())
+        controller.triggerPressed(for: .mouseChord, at: CGPoint(x: 100, y: 100))
+
+        // A click *on* the wheel is handled by the SwiftUI gesture; a local mouse-down
+        // monitor would double-handle it as a cancel, so dismiss stays global-only.
+        let localDismiss = recorder.installed.filter {
+            $0.kind == .local && $0.mask.contains(.leftMouseDown)
+        }
+        XCTAssertTrue(localDismiss.isEmpty, "dismiss must not have a local mouse-down monitor")
+    }
+
+    func testDismissRemovesEveryInstalledMonitor() {
+        let recorder = MonitorRecorder()
+        let controller = makeController(mode: .clickToStay, installer: recorder.installer())
+        controller.triggerPressed(for: .mouseChord, at: CGPoint(x: 100, y: 100))
+        XCTAssertFalse(recorder.installed.isEmpty)
+
+        controller.escapePressed()
+
+        XCTAssertEqual(Set(recorder.removed), Set(recorder.installed.map(\.token)),
+                       "every monitor installed on summon must be removed on dismiss")
+    }
+
+    // MARK: - Fixtures
+
+    private func makeController(
+        mode: InteractionMode, installer: EventMonitorInstaller
+    ) -> RadialMenuController {
+        let source = StubEnumerationSource(selfPID: 1, windows: [
+            raw(number: 11, pid: 10, name: "Chrome", title: "Inbox"),
+            raw(number: 12, pid: 10, name: "Chrome", title: "Docs"),
+            raw(number: 21, pid: 20, name: "Ghostty", title: "Terminal")
+        ])
+        let registry = MenuRegistry()
+        registry.register(
+            WindowSwitcherMenu(enumerator: WindowEnumerator(source: source)),
+            for: .mouseChord
+        )
+        let fake = FakeWindowSystem(
+            apps: [
+                FakeWindowSystem.AppState(id: AppID(pid: 10), hidden: false,
+                                          windows: [win(10, 11), win(10, 12)]),
+                FakeWindowSystem.AppState(id: AppID(pid: 20), hidden: false,
+                                          windows: [win(20, 21)])
+            ],
+            frontmost: AppID(pid: 10)
+        )
+        return RadialMenuController(
+            registry: registry,
+            windowControl: WindowController(system: fake),
+            modeProvider: { mode },
+            appearanceProvider: { .default },
+            monitorInstaller: installer
+        )
+    }
+
+    private func win(_ pid: pid_t, _ token: Int) -> FakeWindowSystem.WindowState {
+        FakeWindowSystem.WindowState(id: WindowID(app: AppID(pid: pid), token: token), minimized: false)
+    }
+
+    private func raw(number: Int, pid: pid_t, name: String, title: String = "") -> RawWindow {
+        RawWindow(
+            windowNumber: number, ownerPID: pid, ownerName: name, title: title,
+            layer: 0, alpha: 1, bounds: CGRect(x: 0, y: 0, width: 800, height: 600)
+        )
+    }
+}
+
+/// Records what an `EventMonitorInstaller` is asked to install and remove, so a test
+/// can assert the controller's monitor wiring without any live NSEvent stream.
+@MainActor
+private final class MonitorRecorder {
+    enum Kind { case global, local }
+    struct Installed {
+        let kind: Kind
+        let mask: NSEvent.EventTypeMask
+        let token: Int
+        let globalHandler: ((NSEvent) -> Void)?
+        let localHandler: ((NSEvent) -> NSEvent?)?
+    }
+
+    private(set) var installed: [Installed] = []
+    private(set) var removed: [Int] = []
+    private var nextToken = 0
+
+    func installer() -> EventMonitorInstaller {
+        EventMonitorInstaller(
+            addGlobal: { [weak self] mask, handler in
+                self?.record(.global, mask, global: handler, local: nil)
+            },
+            addLocal: { [weak self] mask, handler in
+                self?.record(.local, mask, global: nil, local: handler)
+            },
+            remove: { [weak self] token in
+                if let token = token as? Int { self?.removed.append(token) }
+            }
+        )
+    }
+
+    private func record(
+        _ kind: Kind, _ mask: NSEvent.EventTypeMask,
+        global: ((NSEvent) -> Void)?, local: ((NSEvent) -> NSEvent?)?
+    ) -> Any? {
+        let token = nextToken
+        nextToken += 1
+        installed.append(Installed(kind: kind, mask: mask, token: token,
+                                   globalHandler: global, localHandler: local))
+        return token
+    }
+}

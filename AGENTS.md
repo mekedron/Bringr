@@ -37,7 +37,7 @@ build/Build/Products/Debug/Bringr.app/Contents/MacOS/Bringr
 
 ## Workflow
 
-After compleating each beads task, launch the latest build of the app.
+After compleating each bead or task, launch the application and keep it running for my personal use.
 
 <!-- BEGIN BEADS INTEGRATION v:1 profile:minimal hash:7510c1e2 -->
 ## Beads Issue Tracker

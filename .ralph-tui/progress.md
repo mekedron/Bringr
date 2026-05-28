@@ -20,6 +20,22 @@ after each iteration and it's included in prompts for context.
   permission. The handler fires on the main run loop, so wrap body in
   `MainActor.assumeIsolated`. A `@MainActor final class` is implicitly `Sendable`,
   so capturing `[weak self]` in the (possibly `@Sendable`) handler closure compiles.
+- **A global NSEvent monitor never fires for events routed to your own app.**
+  `addGlobalMonitorForEvents` only sees events sent to *other* apps; events the
+  window server delivers to your own window (e.g. cursor moves over the
+  non-activating overlay once a held trigger is released) reach it via
+  `addLocalMonitorForEvents` instead. To track input that may land in either place,
+  install BOTH — they're mutually exclusive per event (each event reaches exactly
+  one app), so there's no double-counting; have the local handler `return event` so
+  it passes through. Installs go through the injectable `EventMonitorInstaller` seam
+  (`.live` in production) so the wiring is unit-testable without a live event stream.
+- **New `.swift` files must be added to `Bringr.xcodeproj/project.pbxproj` by hand**
+  — the project has no `PBXFileSystemSynchronizedRootGroup`, so a file created on
+  disk is silently *not* compiled (a new test class "executes 0 tests" and the build
+  still succeeds). Add four entries, mirroring an existing same-target file: a
+  `PBXBuildFile`, a `PBXFileReference`, a child in the target's `PBXGroup`, and an
+  entry in its `PBXSourcesBuildPhase`. IDs follow `1A00…00XX`; pick the next free
+  pair above the current max (grep the IDs). `pbxproj` uses tab indentation.
 
 ---
 
@@ -56,5 +72,47 @@ Three-finger gesture fired on tap/rest instead of requiring an actual click.
     quirk for the locally-signed dev build, not a failure.
   - Quality gates: build SUCCEEDED, `swiftlint lint --strict` 0 violations, all 172
     tests pass.
+---
+
+## 2026-05-28 - Bringr-93j.19
+
+Hover feedback died after switching the interaction mode to click-to-stay.
+
+- **What:** The pie menu's hover (slice highlight + app/window isolation) was driven
+  by a single *global* NSEvent monitor. In hold-to-select the held chord keeps the
+  app underneath active, so cursor moves arrive there (as drags) and the global
+  monitor fires. In click-to-stay the trigger is released and the moves are
+  delivered to our own overlay — a global monitor never sees those, so hover went
+  dead the moment the wheel persisted. Added a *local* monitor for the same hover
+  mask alongside the global one (the two are mutually exclusive per event), set
+  `acceptsMouseMovedEvents = true` on the overlay, and left the dismiss monitor
+  global-only (a local mouse-down monitor would double-handle the SwiftUI click
+  gesture as a cancel).
+- **Files changed:**
+  - `Bringr/RadialMenuWindow.swift` — `acceptsMouseMovedEvents = true` on the panel;
+    new `EventMonitorInstaller` seam (`.live` wraps NSEvent's global/local/remove);
+    `RadialMenuController` takes a `monitorInstaller` (default `.live`);
+    `startMenuMonitors()` now installs global + local hover monitors through it and
+    `stopMenuMonitors()` removes through it. WHY comments explain the global-vs-local
+    split and why dismiss stays global-only.
+  - `BringrTests/RadialMenuControllerHoverTests.swift` (new) — injects a recording
+    `EventMonitorInstaller`; asserts both a global and a local hover monitor are wired
+    in BOTH modes (the regression catcher), the local hover monitor passes events
+    through, dismiss is global-only, and dismiss removes every installed monitor.
+  - `Bringr.xcodeproj/project.pbxproj` — registered the new test file with the
+    BringrTests target (4 entries, IDs `…0065`/`…0066`).
+- **Learnings:**
+  - The bug was purely in the live monitor layer; `updateHover` itself is
+    mode-agnostic. A unit test calling `updateHover` directly would pass before and
+    after the fix and catch nothing — the *wiring* (which monitors get installed) is
+    what had to be covered, hence the injectable installer + recorder.
+  - Could not physically perform the chord/gesture and sweep the cursor over slices
+    in the automated env, so mode-independent hover is covered by the wiring tests;
+    app build + launch verified (no crash).
+  - Hit the silent "new file not in the target" trap: the first full test run
+    *succeeded* with the new file ignored; `-only-testing` on the new class reported
+    "Executed 0 tests", which is the tell. See the new pbxproj pattern up top.
+  - Quality gates: build SUCCEEDED, `swiftlint lint --strict` 0 violations, all 177
+    tests pass (was 173 before the 4 new ones).
 ---
 

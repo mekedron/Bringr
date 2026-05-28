@@ -25,7 +25,32 @@ final class RadialMenuWindow: NSPanel {
         hidesOnDeactivate = false
         isReleasedWhenClosed = false
         collectionBehavior = [.canJoinAllSpaces, .stationary, .fullScreenAuxiliary]
+        // Ask for cursor-move events so the overlay's local monitor has something to
+        // catch in click-to-stay, where moves are delivered to us rather than the app
+        // underneath (see `RadialMenuController.startMenuMonitors`).
+        acceptsMouseMovedEvents = true
     }
+}
+
+/// Indirection over AppKit's event-monitor calls so the while-open monitor wiring is
+/// unit-testable. Production wires `NSEvent`'s global *and* local monitors; a test
+/// injects a recorder to assert hover gets both — the regression here was a
+/// global-only hover monitor, which never fires for cursor moves the window server
+/// routes to our own overlay (the click-to-stay case).
+struct EventMonitorInstaller {
+    /// Passive monitor for events sent to *other* apps. Returns an opaque token.
+    var addGlobal: (NSEvent.EventTypeMask, @escaping (NSEvent) -> Void) -> Any?
+    /// Monitor for events sent to *this* app; the handler returns the event to pass
+    /// it through (or nil to consume it). Returns an opaque token.
+    var addLocal: (NSEvent.EventTypeMask, @escaping (NSEvent) -> NSEvent?) -> Any?
+    /// Tears down a monitor created by either installer.
+    var remove: (Any) -> Void
+
+    static let live = EventMonitorInstaller(
+        addGlobal: { NSEvent.addGlobalMonitorForEvents(matching: $0, handler: $1) },
+        addLocal: { NSEvent.addLocalMonitorForEvents(matching: $0, handler: $1) },
+        remove: { NSEvent.removeMonitor($0) }
+    )
 }
 
 /// Owns the pre-warmed overlay window and drives the menu for each summon.
@@ -72,6 +97,9 @@ final class RadialMenuController: ObservableObject {
     /// Preferences appearance change applies on the next summon without a relaunch
     /// (US-014 AC2).
     private let appearanceProvider: () -> RadialAppearance
+    /// Installs the while-open NSEvent monitors. `.live` in production; a test injects
+    /// a recorder to assert hover is wired with both a global and a local monitor.
+    private let monitorInstaller: EventMonitorInstaller
     /// Global event monitors that live only while the menu is open: cursor moves/drags
     /// feed hover to the navigator (during a held chord the moves arrive as drags),
     /// and key/mouse-downs drive the Esc and click-outside cancels (US-015). Installed
@@ -89,11 +117,13 @@ final class RadialMenuController: ObservableObject {
         geometry: RadialGeometry = .default,
         windowControl: WindowController? = nil,
         modeProvider: @escaping () -> InteractionMode = { InteractionMode.current() },
-        appearanceProvider: @escaping () -> RadialAppearance = { RadialAppearance.current() }
+        appearanceProvider: @escaping () -> RadialAppearance = { RadialAppearance.current() },
+        monitorInstaller: EventMonitorInstaller = .live
     ) {
         self.registry = registry
         self.modeProvider = modeProvider
         self.appearanceProvider = appearanceProvider
+        self.monitorInstaller = monitorInstaller
         self.navigator = RadialNavigator(
             windowControl: windowControl ?? WindowController(),
             baseGeometry: geometry
@@ -234,18 +264,38 @@ final class RadialMenuController: ObservableObject {
     /// clicks *on* the wheel are local and handled by the SwiftUI gesture instead.
     private func startMenuMonitors() {
         guard eventMonitors.isEmpty else { return }
-        if let hover = NSEvent.addGlobalMonitorForEvents(
-            matching: [.mouseMoved, .leftMouseDragged, .rightMouseDragged, .otherMouseDragged]
-        ) { [weak self] _ in
+        // Hover needs BOTH a global and a local monitor. A global monitor sees only
+        // events the window server routes to *other* apps: in hold-to-select the held
+        // chord keeps the app underneath active, so cursor moves land there (as drags)
+        // and the global monitor fires. But in click-to-stay the trigger is released
+        // and the moves are delivered to our own non-activating overlay — a global
+        // monitor never fires for those, so hover would die the moment the wheel
+        // persists. The two are mutually exclusive per event (each event reaches
+        // exactly one app), so installing both can't double-count; the local one
+        // returns the event so the overlay's own gesture/tracking still runs.
+        let hoverMask: NSEvent.EventTypeMask =
+            [.mouseMoved, .leftMouseDragged, .rightMouseDragged, .otherMouseDragged]
+        if let globalHover = monitorInstaller.addGlobal(hoverMask, { [weak self] _ in
             self?.updateHover(forGlobalCursor: NSEvent.mouseLocation)
-        } {
-            eventMonitors.append(hover)
+        }) {
+            eventMonitors.append(globalHover)
         }
-        if let dismiss = NSEvent.addGlobalMonitorForEvents(
-            matching: [.keyDown, .leftMouseDown, .rightMouseDown, .otherMouseDown]
-        ) { [weak self] event in
-            self?.handleDismissEvent(event)
-        } {
+        if let localHover = monitorInstaller.addLocal(hoverMask, { [weak self] event in
+            self?.updateHover(forGlobalCursor: NSEvent.mouseLocation)
+            return event
+        }) {
+            eventMonitors.append(localHover)
+        }
+        // Dismiss stays global-only on purpose: a click *on* the wheel is our own
+        // event, already handled by the SwiftUI gesture (`clickInOverlay`); a local
+        // dismiss monitor would see that same click as a "click over none" and cancel
+        // the selection the gesture is making. Only clicks/keys routed elsewhere —
+        // i.e. outside the wheel — should reach this cancel path, and those are global.
+        if let dismiss = monitorInstaller.addGlobal(
+            [.keyDown, .leftMouseDown, .rightMouseDown, .otherMouseDown], { [weak self] event in
+                self?.handleDismissEvent(event)
+            }
+        ) {
             eventMonitors.append(dismiss)
         }
         spaceObserver = NSWorkspace.shared.notificationCenter.addObserver(
@@ -256,7 +306,7 @@ final class RadialMenuController: ObservableObject {
     }
 
     private func stopMenuMonitors() {
-        for monitor in eventMonitors { NSEvent.removeMonitor(monitor) }
+        for monitor in eventMonitors { monitorInstaller.remove(monitor) }
         eventMonitors.removeAll()
         if let spaceObserver {
             NSWorkspace.shared.notificationCenter.removeObserver(spaceObserver)

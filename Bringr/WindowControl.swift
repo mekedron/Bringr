@@ -1,19 +1,4 @@
-import AppKit
-import ApplicationServices
-import CoreGraphics
 import Foundation
-
-/// Accessibility SPI that returns the `CGWindowID` (i.e. `kCGWindowNumber`) backing
-/// an `AXUIElement` window. It is the only reliable way to map an AX window element
-/// to the stable window number the enumeration service (US-003) keys on, so the two
-/// subsystems can agree on one `WindowID` token. Declared by symbol name; resolves
-/// against the already-linked Accessibility framework. The caller treats a failure
-/// as "no number" and falls back, so an absent symbol degrades rather than crashes.
-@_silgen_name("_AXUIElementGetWindow")
-private func axUIElementGetWindow(
-    _ element: AXUIElement,
-    _ windowID: UnsafeMutablePointer<CGWindowID>
-) -> AXError
 
 /// Identifies a running application by its process id.
 struct AppID: Hashable, Sendable {
@@ -102,10 +87,14 @@ final class WindowController {
 
     // MARK: - Primitives
 
-    /// Raise `window` and move focus to it: activate its app, bring the window
-    /// to the front, and make it main/focused. (AC1)
+    /// Raise `window` and move focus to it: first ask AX to raise the selected
+    /// window, then activate its app, then focus/raise/focus the same window again
+    /// so neither app activation nor restored window order can leave a prior front
+    /// app/window as the winner. (AC1)
     func raiseAndFocus(_ window: WindowID) {
+        system.raise(window)
         system.activate(window.app)
+        system.focusWindow(window)
         system.raise(window)
         system.focusWindow(window)
     }
@@ -277,122 +266,5 @@ final class WindowController {
             frontmostPID: session.frontmostBefore?.pid, apps: apps, windows: windows
         )
         if snapshot.isEmpty { store.clear() } else { store.save(snapshot) }
-    }
-}
-
-/// Live `WindowControlling` backed by `NSRunningApplication` (app visibility and
-/// activation) and the Accessibility API (per-window state and control).
-///
-/// Hiding a single window uses AX minimize, the only reversible per-window hide
-/// the API offers; `restore()` un-minimizes it. AX element references are cached
-/// by `WindowID` as windows are enumerated.
-@MainActor
-final class LiveWindowSystem: WindowControlling {
-    private var elementCache: [WindowID: AXUIElement] = [:]
-    private let selfPID = ProcessInfo.processInfo.processIdentifier
-
-    func runningApps() -> [AppID] {
-        NSWorkspace.shared.runningApplications
-            .filter { $0.activationPolicy == .regular && $0.processIdentifier != selfPID }
-            .map { AppID(pid: $0.processIdentifier) }
-    }
-
-    func windows(of app: AppID) -> [WindowID] {
-        let appElement = AXUIElementCreateApplication(app.pid)
-        guard let axWindows = copyWindows(appElement) else { return [] }
-
-        var ids: [WindowID] = []
-        for (index, axWindow) in axWindows.enumerated() {
-            // Key on the stable CG window number so a target coming from the
-            // enumeration service resolves to this AX element; fall back to the
-            // enumeration index only if the SPI cannot report a number.
-            let id = WindowID(app: app, token: windowNumber(of: axWindow) ?? index)
-            elementCache[id] = axWindow
-            ids.append(id)
-        }
-        return ids
-    }
-
-    func frontmostApp() -> AppID? {
-        guard let app = NSWorkspace.shared.frontmostApplication,
-              app.processIdentifier != selfPID else { return nil }
-        return AppID(pid: app.processIdentifier)
-    }
-
-    func isHidden(_ app: AppID) -> Bool {
-        runningApplication(app)?.isHidden ?? false
-    }
-
-    func setHidden(_ app: AppID, _ hidden: Bool) {
-        guard let running = runningApplication(app) else { return }
-        if hidden {
-            running.hide()
-        } else {
-            running.unhide()
-        }
-    }
-
-    func activate(_ app: AppID) {
-        // From an accessory app, NSRunningApplication.activate() alone doesn't
-        // reliably win cooperative activation on macOS 14+; setting kAXFrontmost on
-        // the app element brings it forward so the raised window isn't left behind.
-        setBool(AXUIElementCreateApplication(app.pid), kAXFrontmostAttribute, true)
-        runningApplication(app)?.activate()
-    }
-
-    func isMinimized(_ window: WindowID) -> Bool {
-        guard let element = elementCache[window] else { return false }
-        return boolAttribute(element, kAXMinimizedAttribute)
-    }
-
-    func setMinimized(_ window: WindowID, _ minimized: Bool) {
-        guard let element = elementCache[window] else { return }
-        setBool(element, kAXMinimizedAttribute, minimized)
-    }
-
-    func raise(_ window: WindowID) {
-        guard let element = elementCache[window] else { return }
-        AXUIElementPerformAction(element, kAXRaiseAction as CFString)
-    }
-
-    func focusWindow(_ window: WindowID) {
-        guard let element = elementCache[window] else { return }
-        setBool(element, kAXMainAttribute, true)
-        setBool(element, kAXFocusedAttribute, true)
-    }
-
-    // MARK: - Helpers
-
-    private func runningApplication(_ app: AppID) -> NSRunningApplication? {
-        NSRunningApplication(processIdentifier: app.pid)
-    }
-
-    /// The `kCGWindowNumber` backing an AX window element, or `nil` if the
-    /// Accessibility SPI cannot report it.
-    private func windowNumber(of element: AXUIElement) -> Int? {
-        var windowID: CGWindowID = 0
-        let result = axUIElementGetWindow(element, &windowID)
-        return result == .success ? Int(windowID) : nil
-    }
-
-    private func copyWindows(_ appElement: AXUIElement) -> [AXUIElement]? {
-        var value: CFTypeRef?
-        let result = AXUIElementCopyAttributeValue(
-            appElement, kAXWindowsAttribute as CFString, &value
-        )
-        guard result == .success else { return nil }
-        return value as? [AXUIElement]
-    }
-
-    private func boolAttribute(_ element: AXUIElement, _ attribute: String) -> Bool {
-        var value: CFTypeRef?
-        let result = AXUIElementCopyAttributeValue(element, attribute as CFString, &value)
-        guard result == .success, let boolValue = value as? Bool else { return false }
-        return boolValue
-    }
-
-    private func setBool(_ element: AXUIElement, _ attribute: String, _ value: Bool) {
-        let cfValue: CFBoolean = value ? kCFBooleanTrue : kCFBooleanFalse
-        AXUIElementSetAttributeValue(element, attribute as CFString, cfValue)
     }
 }
