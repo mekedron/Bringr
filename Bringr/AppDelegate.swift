@@ -8,6 +8,10 @@ import AppKit
 @MainActor
 final class AppDelegate: NSObject, NSApplicationDelegate {
     let permissions = PermissionsManager()
+    /// The pre-warmed radial menu, summoned by the menu-bar item (and, later, the
+    /// global activation triggers in US-007/US-008). `nil` under XCTest, where the
+    /// launch bootstrap is skipped.
+    private(set) var radialMenu: RadialMenuController?
     private var permissionAlertWindow: PermissionAlertWindow?
 
     func applicationDidFinishLaunching(_ notification: Notification) {
@@ -17,11 +21,24 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         guard !AppDelegate.isRunningTests else { return }
 
         permissions.startMonitoring()
+        prewarmRadialMenu()
 
         let suppressed = UserDefaults.standard.bool(forKey: PermissionAlertWindow.suppressDefaultsKey)
         if AppDelegate.shouldPresentPermissionAlert(isTrusted: permissions.isTrusted, suppressed: suppressed) {
             showPermissionAlert()
         }
+    }
+
+    /// Build the menu registry and the overlay window now, at launch, so a summon
+    /// never allocates the window on the hot path (US-006 / FR-14). The v1 window
+    /// switcher answers both activation triggers.
+    private func prewarmRadialMenu() {
+        let enumerator = WindowEnumerator()
+        let switcher = WindowSwitcherMenu(enumerator: enumerator)
+        let registry = MenuRegistry()
+        registry.register(switcher, for: .mouseChord)
+        registry.register(switcher, for: .threeFingerPress)
+        radialMenu = RadialMenuController(registry: registry)
     }
 
     /// Whether the launch-time permission alert should be shown: only when access

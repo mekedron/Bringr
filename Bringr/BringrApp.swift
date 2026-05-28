@@ -6,7 +6,7 @@ struct BringrApp: App {
 
     var body: some Scene {
         MenuBarExtra {
-            MenuContent(permissions: appDelegate.permissions)
+            MenuContent(permissions: appDelegate.permissions, radialMenu: appDelegate.radialMenu)
         } label: {
             Image(systemName: "circle.hexagongrid")
         }
@@ -29,6 +29,7 @@ struct BringrApp: App {
 
 private struct MenuContent: View {
     @ObservedObject var permissions: PermissionsManager
+    let radialMenu: RadialMenuController?
     @Environment(\.openWindow) private var openWindow
 
     var body: some View {
@@ -37,6 +38,13 @@ private struct MenuContent: View {
                 openPreferences()
             } label: {
                 Label("Grant Accessibility Access…", systemImage: "exclamationmark.triangle.fill")
+            }
+            Divider()
+        }
+
+        if let radialMenu {
+            Button("Open Window Switcher") {
+                radialMenu.toggle(trigger: .mouseChord, at: NSEvent.mouseLocation)
             }
             Divider()
         }
