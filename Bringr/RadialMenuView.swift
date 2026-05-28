@@ -112,8 +112,8 @@ struct RadialSliceLabel: View {
 
     var body: some View {
         VStack(spacing: 4) {
-            if let app = node.representedApp {
-                appIcon(for: app)
+            if node.representsApp {
+                appIcon
                 if showsLabels {
                     Text(node.title)
                         .font(.caption)
@@ -134,8 +134,8 @@ struct RadialSliceLabel: View {
     }
 
     @ViewBuilder
-    private func appIcon(for app: AppID) -> some View {
-        if let icon = NSRunningApplication(processIdentifier: app.pid)?.icon {
+    private var appIcon: some View {
+        if let icon = node.appSliceIcon {
             Image(nsImage: icon)
                 .resizable()
                 .frame(width: 32, height: 32)
@@ -143,5 +143,24 @@ struct RadialSliceLabel: View {
             Image(systemName: "app.dashed")
                 .font(.system(size: 28))
         }
+    }
+}
+
+extension MenuNode {
+    /// The icon for an app slice: the running app's live icon, looked up by pid — the
+    /// pre-My-Apps behavior, unchanged — falling back to the on-disk bundle icon by
+    /// bundle id for a curated app that isn't running (Bringr-93j.38). `nil` when neither
+    /// resolves, so the view shows a generic placeholder. Pure system lookups, so the
+    /// fallback is exercised in tests against an always-installed app.
+    var appSliceIcon: NSImage? {
+        if let pid = representedApp?.pid,
+           let icon = NSRunningApplication(processIdentifier: pid)?.icon {
+            return icon
+        }
+        if let bundleIdentifier,
+           let url = CuratedApp.bundleURL(forBundleIdentifier: bundleIdentifier) {
+            return NSWorkspace.shared.icon(forFile: url.path)
+        }
+        return nil
     }
 }

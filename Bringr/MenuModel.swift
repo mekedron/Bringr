@@ -47,6 +47,14 @@ struct MenuNode: Identifiable {
     /// The app this node stands for, when it stands for one (app slices), so a
     /// renderer can show that app's icon. `nil` for the root and window leaves.
     let representedApp: AppID?
+    /// Bundle identifier of the app this node stands for, when known — set for curated
+    /// "My Apps" slices so the wheel can render the app's icon from its on-disk bundle
+    /// even when the app isn't running (no pid to look up) (Bringr-93j.38). Additive and
+    /// independent of `representedApp`: a live-enumeration app node carries only
+    /// `representedApp` and renders from the running pid, unchanged; a curated entry
+    /// carries this, and may carry both when it is also running. `nil` for the root and
+    /// window leaves.
+    let bundleIdentifier: String?
     let children: MenuChildren
 
     init(
@@ -54,13 +62,22 @@ struct MenuNode: Identifiable {
         title: String,
         action: MenuAction,
         representedApp: AppID? = nil,
+        bundleIdentifier: String? = nil,
         children: MenuChildren = .static([])
     ) {
         self.id = id
         self.title = title
         self.action = action
         self.representedApp = representedApp
+        self.bundleIdentifier = bundleIdentifier
         self.children = children
+    }
+
+    /// Whether this node stands for an application — it renders an app icon rather than a
+    /// window index. True when it carries a running pid (`representedApp`) or a bundle id
+    /// (`bundleIdentifier`, a curated app that may not be running) (Bringr-93j.38).
+    var representsApp: Bool {
+        representedApp != nil || bundleIdentifier != nil
     }
 
     /// This node's children, running the provider for dynamic content. Called on

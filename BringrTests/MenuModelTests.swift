@@ -181,6 +181,54 @@ final class MenuModelTests: XCTestCase {
         XCTAssertEqual(root.resolvedChildren().map(\.title), ["Chrome", "Mail"])
     }
 
+    // MARK: - Bringr-93j.38: app slice icons from a bundle id (My Apps, not running)
+
+    func testNodeBundleIdentifierDefaultsToNil() {
+        let node = MenuNode(id: MenuNodeID("a"), title: "A", action: .expand)
+        XCTAssertNil(node.bundleIdentifier)
+    }
+
+    /// This task leaves live-enumeration app nodes unchanged: they render from the
+    /// running pid, so they never carry a bundle id (that is for curated entries).
+    func testEnumerationAppNodesCarryNoBundleIdentifier() {
+        let source = stub([raw(number: 11, pid: 10, name: "Chrome")])
+        let apps = WindowSwitcherMenu(enumerator: WindowEnumerator(source: source))
+            .makeRoot().resolvedChildren()
+        XCTAssertEqual(apps.map(\.bundleIdentifier), [nil] as [String?])
+    }
+
+    func testRepresentsAppForPidBundleIdOrNeither() {
+        let running = MenuNode(id: MenuNodeID("r"), title: "R", action: .expand,
+                               representedApp: AppID(pid: 10))
+        let curated = MenuNode(id: MenuNodeID("c"), title: "C", action: .expand,
+                               bundleIdentifier: "com.example.app")
+        let window = MenuNode(id: MenuNodeID("w"), title: "W", action: .expand)
+
+        XCTAssertTrue(running.representsApp)
+        XCTAssertTrue(curated.representsApp)
+        XCTAssertFalse(window.representsApp)
+    }
+
+    /// Finder is always installed; a curated node carrying its bundle id but no pid
+    /// resolves an icon from the on-disk bundle — the not-running fallback (the bead's
+    /// core acceptance criterion).
+    func testAppSliceIconResolvesFromBundleIdWhenNotRunning() {
+        let node = MenuNode(id: MenuNodeID("f"), title: "Finder", action: .expand,
+                            bundleIdentifier: "com.apple.finder")
+        XCTAssertNotNil(node.appSliceIcon)
+    }
+
+    /// No running pid and an unknown bundle id → no icon, so the view falls to the
+    /// generic placeholder (the pre-My-Apps behavior when a pid had no icon).
+    func testAppSliceIconNilWhenNothingResolves() {
+        let bogus = MenuNode(id: MenuNodeID("b"), title: "Nope", action: .expand,
+                             bundleIdentifier: "com.bringr.does.not.exist")
+        let deadPid = MenuNode(id: MenuNodeID("d"), title: "Gone", action: .expand,
+                               representedApp: AppID(pid: pid_t(Int32.max)))
+        XCTAssertNil(bogus.appSliceIcon)
+        XCTAssertNil(deadPid.appSliceIcon)
+    }
+
     // MARK: - Fixtures
 
     private func stub(_ windows: [RawWindow], selfPID: pid_t = 1) -> StubEnumerationSource {
