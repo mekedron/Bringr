@@ -203,25 +203,35 @@ struct ModifierHoldDetector {
 @MainActor
 final class ModifierHoldMonitor {
     private var detector = ModifierHoldDetector()
+    /// Gates the rising edge behind the hold delay (Bringr-93j.58): a press is delivered
+    /// only after the keys survive the delay, and a release before then cancels it.
+    private var delayGate = ModifierHoldDelayGate()
     private let onPress: () -> Void
     private let onRelease: () -> Void
     /// The armed combinations, read fresh on each modifier change so Preferences edits
     /// apply at once. Injected so tests can pass fixed combinations.
     private let armedProvider: () -> [ModifierCombination]
+    /// The hold delay in seconds, read fresh on each rising edge so a Preferences change
+    /// applies on the next hold. Injected so tests can pin a value.
+    private let delayProvider: () -> TimeInterval
 
     private var eventTap: CFMachPort?
     private var runLoopSource: CFRunLoopSource?
+    /// Pending delayed-press timer; non-nil while a hold is waiting out the delay.
+    private var pressDelayTimer: Timer?
 
     private let log = Logger(subsystem: "com.mekedron.Bringr", category: "ModifierHold")
 
     init(
         onPress: @escaping () -> Void,
         onRelease: @escaping () -> Void = {},
-        armedProvider: @escaping () -> [ModifierCombination] = { ModifierActivation.armedCombinations() }
+        armedProvider: @escaping () -> [ModifierCombination] = { ModifierActivation.armedCombinations() },
+        delayProvider: @escaping () -> TimeInterval = { ActivationHoldDelay.current() }
     ) {
         self.onPress = onPress
         self.onRelease = onRelease
         self.armedProvider = armedProvider
+        self.delayProvider = delayProvider
     }
 
     /// Whether the tap is currently installed.
@@ -262,6 +272,7 @@ final class ModifierHoldMonitor {
         eventTap = tap
         runLoopSource = source
         detector.reset()
+        clearPendingPress()
         log.info("Modifier-hold tap installed.")
         return true
     }
@@ -273,6 +284,7 @@ final class ModifierHoldMonitor {
         eventTap = nil
         runLoopSource = nil
         detector.reset()
+        clearPendingPress()
     }
 
     private func handle(type: CGEventType, event: CGEvent) -> Unmanaged<CGEvent>? {
@@ -285,10 +297,56 @@ final class ModifierHoldMonitor {
 
         let held = ModifierCombination(cgFlags: event.flags)
         switch detector.handle(held: held, armed: armedProvider()) {
-        case .press: onPress()
-        case .release: onRelease()
+        case .press: scheduleDelayedPress()
+        case .release: handleRelease()
         case .none: break
         }
         return Unmanaged.passUnretained(event)
+    }
+
+    // MARK: - Hold delay (Bringr-93j.58)
+
+    /// Arm the delay timer on a rising edge. A zero delay fires the press immediately so
+    /// the pre-93j.58 behaviour (summon on the rising edge) is preserved exactly.
+    private func scheduleDelayedPress() {
+        guard delayGate.press() else { return }
+        cancelPressDelayTimer()
+        let delay = delayProvider()
+        guard delay > 0 else {
+            deliverDelayedPress()
+            return
+        }
+        let timer = Timer(timeInterval: delay, repeats: false) { [weak self] _ in
+            Task { @MainActor in self?.deliverDelayedPress() }
+        }
+        RunLoop.main.add(timer, forMode: .common)
+        pressDelayTimer = timer
+    }
+
+    /// The delay elapsed (or was zero): deliver the press, but only if the hold survived —
+    /// the gate declines a stale fire whose release already slipped in first.
+    private func deliverDelayedPress() {
+        cancelPressDelayTimer()
+        if delayGate.delayElapsed() { onPress() }
+    }
+
+    /// A falling edge: cancel a still-pending press (the hold was too short) or propagate
+    /// the release if the press was already delivered.
+    private func handleRelease() {
+        switch delayGate.release() {
+        case .cancelPendingPress: cancelPressDelayTimer()
+        case .propagateRelease: onRelease()
+        case .ignore: break
+        }
+    }
+
+    private func clearPendingPress() {
+        cancelPressDelayTimer()
+        delayGate.reset()
+    }
+
+    private func cancelPressDelayTimer() {
+        pressDelayTimer?.invalidate()
+        pressDelayTimer = nil
     }
 }

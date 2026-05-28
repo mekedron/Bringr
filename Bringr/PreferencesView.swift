@@ -100,6 +100,10 @@ struct PreferencesView: View {
                 .disabled(method != .modifierKeys)
                 .opacity(method == .modifierKeys ? 1 : 0.4)
 
+            ModifierHoldDelayPicker()
+                .disabled(method != .modifierKeys)
+                .opacity(method == .modifierKeys ? 1 : 0.4)
+
             Text(mouseHelp(method: method))
                 .font(.callout)
                 .foregroundStyle(.secondary)
@@ -123,6 +127,8 @@ struct PreferencesView: View {
         let combo = ModifierCombination(rawValue: trackpadModifiersRaw).intersection(.all)
         return VStack(alignment: .leading, spacing: 10) {
             ModifierKeysPicker(rawValue: $trackpadModifiersRaw)
+
+            ModifierHoldDelayPicker()
 
             Text(combo.isEmpty
                  ? "Pick one or more modifier keys to hold. Until then, the trackpad can't summon the wheel."
@@ -326,6 +332,40 @@ private struct ModifierKeysPicker: View {
                 rawValue = combo.rawValue
             }
         )
+    }
+}
+
+/// A slider plus a numeric field for the modifier hold delay (Bringr-93j.58). Rendered in
+/// both the Mouse and Trackpad sections; both bind the one key, so editing either keeps
+/// them in sync. `ModifierHoldMonitor` reads the same key fresh on each hold, so a change
+/// applies on the next summon without a relaunch.
+private struct ModifierHoldDelayPicker: View {
+    @AppStorage(ActivationHoldDelay.defaultsKey)
+    private var delayMilliseconds = ActivationHoldDelay.defaultMilliseconds
+
+    var body: some View {
+        let value = Binding(
+            get: { delayMilliseconds },
+            set: { delayMilliseconds = ActivationHoldDelay.clampMilliseconds($0) }
+        )
+        return VStack(alignment: .leading, spacing: 6) {
+            HStack(spacing: 10) {
+                Text("Hold delay")
+                Slider(value: value, in: ActivationHoldDelay.millisecondRange)
+                TextField("", value: value, format: .number.precision(.fractionLength(0)))
+                    .frame(width: 52)
+                    .multilineTextAlignment(.trailing)
+                    .textFieldStyle(.roundedBorder)
+                Text("ms")
+            }
+
+            Text("Hold the keys at least this long before the wheel opens, so a quick tap "
+                 + "(like Fn to switch the input language) won't summon it. Shared by Mouse "
+                 + "and Trackpad.")
+                .font(.callout)
+                .foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
+        }
     }
 }
 
