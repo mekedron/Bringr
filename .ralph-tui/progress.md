@@ -76,6 +76,44 @@ after each iteration and it's included in prompts for context.
 
 ---
 
+## 2026-05-28 - Bringr-93j.26
+
+Refine the Preferences window and make it scrollable so everything fits.
+
+- **What:** The Preferences root was a `VStack` pinned to `.frame(width: 460, height: 720)`
+  whose height had been bumped each time a section was added (560 → 620 → 720, per the
+  earlier log entries) and was now cramped. Wrapped the sections in a `ScrollView` and
+  fixed the window at `460 × 600` (smaller than the ~720pt of content), so overflow scrolls
+  instead of stretching the window taller as settings accumulate. Removed the now-pointless
+  trailing `Spacer(minLength: 0)` (a Spacer in a scroll view is wrong anyway). DRY'd the
+  five repeated `Text(title).font(.title2).bold()` + content + `Divider()` blocks into a
+  `section(_:isFirst:content:)` `@ViewBuilder` helper that emits the divider before every
+  section but the first — so a new setting is a single `section("X") { xSection }` line.
+- **Files changed:**
+  - `Bringr/PreferencesView.swift` — body wrapped in `ScrollView` (`.frame(width: 460,
+    height: 600)`); inner `VStack` gets `.padding(28).frame(maxWidth: .infinity,
+    alignment: .leading)`; new `section` helper. The section *bodies* (`permissionSection`
+    etc.) were already extracted computed props and are unchanged.
+  - No `BringrApp.swift` change: the Preferences scene keeps `.windowResizability(.contentSize)`,
+    which sizes the window to the ScrollView's fixed frame — fixed window, internal scroll.
+- **Learnings:**
+  - With `.windowResizability(.contentSize)`, a root `ScrollView { … }.frame(width:height:)`
+    makes the window exactly that frame and scrolls the content inside — the canonical way
+    to cap a SwiftUI settings window's size. Give the inner content `.frame(maxWidth:
+    .infinity, alignment: .leading)` so it fills the width and stays left-aligned rather
+    than sizing to its widest child.
+  - SourceKit flagged "Cannot find type 'PermissionsManager' in scope" (and the other
+    same-module types) on the edited file — a false positive from single-file analysis
+    without the rest of the target compiled. The full `xcodebuild` build is authoritative
+    and SUCCEEDED; don't chase these.
+  - No test references `PreferencesView` (it's pure UI), so the refactor is free; the scroll
+    behaviour is verified by build & run (app relaunched, no crash). Couldn't drive the
+    MenuBarExtra → Preferences open + screenshot in the headless env, so the visual scroll
+    is for the user to eyeball; the structure is a textbook ScrollView wrap.
+  - Quality gates: build SUCCEEDED, `swiftlint lint --strict` 0 violations, all 206 tests
+    pass (no count change — UI-only edit).
+---
+
 ## 2026-05-28 - Bringr-93j.23
 
 Three-finger click should suppress other trackpad gestures while it opens the menu.

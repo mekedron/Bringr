@@ -22,49 +22,38 @@ struct PreferencesView: View {
     @AppStorage(RevealStrategy.defaultsKey) private var revealStrategyRaw = RevealStrategy.default.rawValue
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 18) {
-            Text("Permissions")
-                .font(.title2)
-                .bold()
-
-            permissionSection
-
-            Divider()
-
-            Text("Startup")
-                .font(.title2)
-                .bold()
-
-            startupSection
-
-            Divider()
-
-            Text("Interaction")
-                .font(.title2)
-                .bold()
-
-            interactionSection
-
-            Divider()
-
-            Text("Reveal")
-                .font(.title2)
-                .bold()
-
-            revealSection
-
-            Divider()
-
-            Text("Appearance")
-                .font(.title2)
-                .bold()
-
-            appearanceSection
-
-            Spacer(minLength: 0)
+        ScrollView {
+            VStack(alignment: .leading, spacing: 18) {
+                section("Permissions", isFirst: true) { permissionSection }
+                section("Startup") { startupSection }
+                section("Interaction") { interactionSection }
+                section("Reveal") { revealSection }
+                section("Appearance") { appearanceSection }
+            }
+            .padding(28)
+            .frame(maxWidth: .infinity, alignment: .leading)
         }
-        .padding(28)
-        .frame(width: 460, height: 720)
+        .frame(width: 460, height: 600)
+    }
+
+    /// One titled settings group. Every section but the first is preceded by a
+    /// divider, so adding a setting is a single `section(_:)` call and the window
+    /// scrolls rather than stretching taller as more settings land here.
+    @ViewBuilder
+    private func section<Content: View>(
+        _ title: String,
+        isFirst: Bool = false,
+        @ViewBuilder content: () -> Content
+    ) -> some View {
+        if !isFirst {
+            Divider()
+        }
+        VStack(alignment: .leading, spacing: 12) {
+            Text(title)
+                .font(.title2)
+                .bold()
+            content()
+        }
     }
 
     private var startupSection: some View {
