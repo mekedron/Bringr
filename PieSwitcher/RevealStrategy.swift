@@ -16,10 +16,6 @@ enum RevealStrategy: String, CaseIterable, Sendable {
     /// Hide every other app / minimise every other window so only the target stays
     /// on screen — the strongest isolation ("everything else disappears").
     case hideOthers
-    /// Raise the target to the front and darken everything else with a spotlight
-    /// overlay that cuts the target out, so it stays bright while its surroundings
-    /// recede.
-    case dimOthers
 
     /// Hide-others is the default: it matches the described v1 experience — only the
     /// target stays visible ("everything else disappears") — which gives the clearest
@@ -35,7 +31,6 @@ enum RevealStrategy: String, CaseIterable, Sendable {
         switch self {
         case .raiseToFront: return "Raise to front"
         case .hideOthers: return "Hide others"
-        case .dimOthers: return "Dim others"
         }
     }
 
@@ -46,8 +41,6 @@ enum RevealStrategy: String, CaseIterable, Sendable {
             return "Bring the hovered app or window to the front, leaving everything else in place."
         case .hideOthers:
             return "Hide everything except the hovered app or window, so only it remains on screen."
-        case .dimOthers:
-            return "Keep the hovered app or window bright and dim everything else behind a spotlight."
         }
     }
 

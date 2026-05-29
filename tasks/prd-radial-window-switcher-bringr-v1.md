@@ -149,9 +149,9 @@ As a user, I want clicking/releasing on a window to bring it forward and have Pi
 As a user, I want to choose how "other" windows/apps get out of the way so that the behavior matches my preference.
 
 **Acceptance Criteria:**
-- [ ] Preferences offers three reveal strategies: raise-target-to-front, hide-others, and dim-others.
+- [ ] Preferences offers two reveal strategies: raise-target-to-front and hide-others.
 - [ ] The chosen strategy applies to both the app-hover (US-010) and window-hover (US-011) levels.
-- [ ] All three strategies are fully implemented and selectable.
+- [ ] Both strategies are fully implemented and selectable.
 - [ ] The setting is persisted and takes effect on the next summon without relaunch.
 - [ ] A sensible default is set and documented.
 
@@ -184,7 +184,7 @@ As a user, I want every way of backing out to leave my windows exactly as they w
 - FR-8: After commit or any cancel, the system must restore all hidden apps/windows to their pre-summon visibility and ordering.
 - FR-9: The system must persist and pre-highlight the last selected window per app.
 - FR-10: The system must support hold-to-select and click-to-stay modes, configurable and persisted.
-- FR-11: The system must offer three reveal strategies (raise, hide-others, dim-others), configurable, persisted, applied at both menu levels.
+- FR-11: The system must offer two reveal strategies (raise, hide-others), configurable, persisted, applied at both menu levels.
 - FR-12: The system must offer appearance customization (size, slice fill/opacity, label visibility), persisted.
 - FR-13: The menu must be represented as an instantiable, nestable tree with dynamic providers and no singleton menu instance.
 - FR-14: The overlay window must be pre-warmed and reused so summon does not allocate it on the hot path.
@@ -212,7 +212,7 @@ As a user, I want every way of backing out to leave my windows exactly as they w
 - Summon-to-first-frame latency meets the instant target on a typical machine.
 - Selecting a window focuses the correct window on the first try in manual testing across Chrome/Ghostty/Telegram/Mail with multiple windows.
 - After 20 summon/cancel/commit cycles, no window is left hidden or mis-ordered.
-- All three reveal strategies and both interaction modes are selectable and behave as specified.
+- Both reveal strategies and both interaction modes are selectable and behave as specified.
 - Quality gates (build, lint, tests) pass on every story.
 
 ## Open Questions
@@ -220,4 +220,3 @@ As a user, I want every way of backing out to leave my windows exactly as they w
 - Reveal default: ship with hide-others (matches the described "everything else disappears") or raise-to-front (most performant/reversible)?
 - "Remember the choice": match remembered windows by title, by order, or both, when window ids change across app restarts?
 - Multi-monitor: for v1, is covering only the display under the cursor sufficient, or must app/window isolation span all displays?
-- Dim-others strategy: should dimming surface windows hidden behind others (which dim alone won't do), or is dim purely a visual treatment of what's already frontmost?

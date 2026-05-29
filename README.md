@@ -88,8 +88,6 @@ windows:
   only it remains on screen.
 - **Raise to front** — bring the hovered app/window forward, leaving everything
   else in place (the most reversible option, nothing is hidden).
-- **Dim others** — keep the hovered app/window bright and dim everything else
-  behind a spotlight overlay.
 
 ## Permissions
 

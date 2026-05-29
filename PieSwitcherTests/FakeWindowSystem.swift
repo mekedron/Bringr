@@ -40,9 +40,6 @@ final class FakeWindowSystem: WindowControlling {
 
     var apps: [AppState]
     var frontmost: AppID?
-    /// Per-window frames returned by `frame(of:)`; unset windows return `nil`, so dim
-    /// tests can fixture exactly the frames they assert the cutout uses.
-    var frames: [WindowID: CGRect] = [:]
     private(set) var focusedWindow: WindowID?
     /// Apps passed to `activate` / `windows(of:)`, in call order — lets tests assert
     /// commit ordering (no prior-frontmost re-activation; target cache refreshed).
@@ -138,42 +135,6 @@ final class FakeWindowSystem: WindowControlling {
               let index = app.windows.firstIndex(where: { $0.id == window }) else { return }
         let state = app.windows.remove(at: index)
         app.windows.insert(state, at: 0)
-    }
-
-    func frame(of window: WindowID) -> CGRect? {
-        frames[window]
-    }
-}
-
-/// Recording `Dimming` double: captures every `dim`/`clear` call so dim-strategy
-/// tests can assert which window frames were cut out and that the spotlight is torn
-/// down on restore. No real panel is created.
-@MainActor
-final class FakeDimmer: Dimming {
-    enum Call: Equatable {
-        case dim([CGRect])
-        case clear
-    }
-
-    private(set) var calls: [Call] = []
-
-    /// Frames passed to the most recent `dim`, or `nil` if `dim` was never called.
-    var lastDimHoles: [CGRect]? {
-        for call in calls.reversed() {
-            if case .dim(let holes) = call { return holes }
-        }
-        return nil
-    }
-
-    var dimCount: Int { calls.filter { if case .dim = $0 { return true } else { return false } }.count }
-    var clearCount: Int { calls.filter { $0 == .clear }.count }
-
-    func dim(excluding holes: [CGRect]) {
-        calls.append(.dim(holes))
-    }
-
-    func clear() {
-        calls.append(.clear)
     }
 }
 

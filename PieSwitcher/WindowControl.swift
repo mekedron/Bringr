@@ -27,8 +27,6 @@ final class WindowController {
     /// Mirrors the in-flight baseline to disk so a crash mid-reveal is undone next launch
     /// (US-015 AC3); `nil` disables journalling (tests/default), production injects one.
     private let store: RevealStateStore?
-    /// Draws/clears the "dim others" spotlight (US-013); `nil` = no dimming (tests/non-dim).
-    private let dimmer: Dimming?
     /// The reveal strategy for the current summon, held so a Preferences change can't switch it mid-reveal.
     private var strategy: RevealStrategy = .default
     /// Whether a commit should clear every other app/window off the screen, leaving only the
@@ -37,10 +35,9 @@ final class WindowController {
     private var hideOnCommit = false
     private var session: Session?
 
-    init(system: WindowControlling? = nil, store: RevealStateStore? = nil, dimmer: Dimming? = nil) {
+    init(system: WindowControlling? = nil, store: RevealStateStore? = nil) {
         self.system = system ?? LiveWindowSystem()
         self.store = store
-        self.dimmer = dimmer
     }
 
     /// Set the strategy for the next reveal. Called once per summon before any
@@ -104,13 +101,12 @@ final class WindowController {
     }
 
     /// End the session without restoring the pre-summon baseline — the reveal state IS
-    /// the final state, per preview = commit (Bringr-93j.88). Clears the dim overlay
-    /// and the crash-safety journal, then discards the session. `restore()` is the
-    /// counterpart used only on cancel paths. Safe to call with no active session.
-    /// Public so the launch branch of `RadialNavigator.commitApp` can end the session
-    /// without going through `WindowController.commit(_:)` (it has no target to focus).
+    /// the final state, per preview = commit (Bringr-93j.88). Clears the crash-safety
+    /// journal and discards the session. `restore()` is the counterpart used only on
+    /// cancel paths. Safe to call with no active session. Public so the launch branch
+    /// of `RadialNavigator.commitApp` can end the session without going through
+    /// `WindowController.commit(_:)` (it has no target to focus).
     func endSession() {
-        dimmer?.clear()
         store?.clear()
         session = nil
     }
@@ -159,22 +155,18 @@ final class WindowController {
         switch strategy {
         case .hideOthers: hideOtherApps(besides: target)
         case .raiseToFront: raiseAppToFront(target)
-        case .dimOthers: dimApp(target)
         }
     }
 
     /// Isolate `target` against its app's other windows (window-hover, US-011) using
-    /// the active strategy. Hide-others and raise-to-front simply raise the hovered
-    /// window — once the other *apps* are already hidden by `revealApp`, isolating
-    /// the chosen app's sibling windows adds no benefit and reintroduced every
-    /// window-management bug we'd chased (Bringr-93j.81/.28/.32 off-screen height
-    /// clamp; Bringr-93j.24 minimize lag), so no strategy parks at the window level
-    /// (Bringr-93j.83/.84).
+    /// the active strategy. Both strategies simply raise the hovered window — once
+    /// the other *apps* are already hidden by `revealApp` (hide-others) or the target
+    /// is already raised (raise-to-front), isolating the chosen app's sibling windows
+    /// adds no benefit and reintroduced every window-management bug we'd chased
+    /// (Bringr-93j.81/.28/.32 off-screen height clamp; Bringr-93j.24 minimize lag),
+    /// so no strategy parks at the window level (Bringr-93j.83/.84).
     func revealWindow(_ target: WindowID) {
-        switch strategy {
-        case .hideOthers, .raiseToFront: raiseWindowToFront(target)
-        case .dimOthers: dimWindow(target)
-        }
+        raiseWindowToFront(target)
     }
 
     /// Raise `target` to the front, leaving other apps put; baseline capture records
@@ -185,35 +177,11 @@ final class WindowController {
         system.activate(target)
     }
 
-    /// Raise `target` and dim everything else, cutting the app's windows out of the
-    /// spotlight so they alone stay bright.
-    private func dimApp(_ target: AppID) {
-        captureAppBaselineIfNeeded()
-        if system.isHidden(target) { system.setHidden(target, false) }
-        system.activate(target)
-        dimmer?.dim(excluding: frames(of: target))
-    }
-
     /// Raise `target` window to the front within its app, leaving the app's others put.
     private func raiseWindowToFront(_ target: WindowID) {
         captureWindowBaselineIfNeeded(for: target.app)
         if system.isMinimized(target) { system.setMinimized(target, false) }
         system.raise(target)
-    }
-
-    /// Raise `target` window and dim everything else, cutting just it out of the
-    /// spotlight; falls back to a uniform dim if its frame is unavailable (still raised).
-    private func dimWindow(_ target: WindowID) {
-        captureWindowBaselineIfNeeded(for: target.app)
-        if system.isMinimized(target) { system.setMinimized(target, false) }
-        system.raise(target)
-        dimmer?.dim(excluding: system.frame(of: target).map { [$0] } ?? [])
-    }
-
-    /// The frames of `app`'s current windows, for the dim cutout; windows whose frame
-    /// can't be resolved are skipped (their region simply stays dimmed).
-    private func frames(of app: AppID) -> [CGRect] {
-        system.windows(of: app).compactMap { system.frame(of: $0) }
     }
 
     /// Put one app's captured window baseline back: restore minimized-state, then
@@ -234,20 +202,12 @@ final class WindowController {
         guard let windows = session?.windowBaseline[app] else { return }
         restoreWindowBaseline(windows)
         session?.windowBaseline[app] = nil
-        // Dim strategy: leaving the sub-wheel returns to the app-level spotlight, so
-        // re-cut the dim to all of the app's windows (the app stays frontmost/bright).
-        if strategy == .dimOthers {
-            dimmer?.dim(excluding: frames(of: app))
-        }
     }
 
     /// Restore every app/window touched this session to its pre-summon visibility and
     /// ordering, then end the session. Safe to call with no active session. (AC5)
     func restore(reactivatingFrontmost: Bool = true) {
         guard let session else { return }
-
-        // 0. Remove any dim spotlight first (a no-op for the other strategies).
-        dimmer?.clear()
 
         // 1. App visibility first, so windows are operated on while their app is shown.
         for snapshot in session.appBaseline {

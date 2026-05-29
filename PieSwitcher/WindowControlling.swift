@@ -1,4 +1,3 @@
-import CoreGraphics
 import Foundation
 
 /// Identifies a running application by its process id.
@@ -49,8 +48,4 @@ protocol WindowControlling {
     /// commit-time fallback for a window absent from its app's AX window list, so the proven
     /// AX path for same-Space windows is untouched.
     func raiseAcrossSpaces(_ window: WindowID)
-    /// The window's frame in AppKit-global coordinates (bottom-left origin, y-up),
-    /// or `nil` if it can't be resolved — used to cut the target out of the dim
-    /// overlay (US-013 dim-others).
-    func frame(of window: WindowID) -> CGRect?
 }

@@ -67,9 +67,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         registry.register(switcher, for: .modifierHold)
 
         // A store-backed controller journals each reveal to disk; replay any reveal a
-        // prior crash left stranded before the first summon (US-015 AC3). The live
-        // dimmer drives the "dim others" reveal strategy's spotlight overlay (US-013).
-        let windowControl = WindowController(store: RevealStateStore(), dimmer: LiveDimmer())
+        // prior crash left stranded before the first summon (US-015 AC3).
+        let windowControl = WindowController(store: RevealStateStore())
         windowControl.restoreFromSnapshotIfNeeded()
         radialMenu = RadialMenuController(registry: registry, windowControl: windowControl)
     }

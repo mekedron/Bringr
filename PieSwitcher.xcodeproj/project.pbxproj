@@ -48,7 +48,6 @@
 		1A0000000000000000000067 /* LaunchAtLogin.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1A0000000000000000000068 /* LaunchAtLogin.swift */; };
 		1A0000000000000000000069 /* LaunchAtLoginTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1A000000000000000000006A /* LaunchAtLoginTests.swift */; };
 		1A000000000000000000006D /* RevealStrategy.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1A000000000000000000006E /* RevealStrategy.swift */; };
-		1A000000000000000000006F /* Dimming.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1A0000000000000000000070 /* Dimming.swift */; };
 		1A0000000000000000000071 /* RevealStrategyTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1A0000000000000000000072 /* RevealStrategyTests.swift */; };
 		1A0000000000000000000074 /* RadialNavigatorFisheyeTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1A0000000000000000000073 /* RadialNavigatorFisheyeTests.swift */; };
 		1A0000000000000000000078 /* RadialNavigatorRetryTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1A0000000000000000000077 /* RadialNavigatorRetryTests.swift */; };
@@ -161,7 +160,6 @@
 		1A0000000000000000000068 /* LaunchAtLogin.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LaunchAtLogin.swift; sourceTree = "<group>"; };
 		1A000000000000000000006A /* LaunchAtLoginTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LaunchAtLoginTests.swift; sourceTree = "<group>"; };
 		1A000000000000000000006E /* RevealStrategy.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RevealStrategy.swift; sourceTree = "<group>"; };
-		1A0000000000000000000070 /* Dimming.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Dimming.swift; sourceTree = "<group>"; };
 		1A0000000000000000000072 /* RevealStrategyTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RevealStrategyTests.swift; sourceTree = "<group>"; };
 		1A0000000000000000000073 /* RadialNavigatorFisheyeTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RadialNavigatorFisheyeTests.swift; sourceTree = "<group>"; };
 		1A0000000000000000000077 /* RadialNavigatorRetryTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RadialNavigatorRetryTests.swift; sourceTree = "<group>"; };
@@ -294,7 +292,6 @@
 				1A0000000000000000000059 /* RevealState.swift */,
 				1A000000000000000000005D /* RadialAppearance.swift */,
 				1A000000000000000000006E /* RevealStrategy.swift */,
-				1A0000000000000000000070 /* Dimming.swift */,
 				1A0000000000000000000079 /* SortOrder.swift */,
 				1A000000000000000000007B /* CuratedApps.swift */,
 				1A000000000000000000007F /* MyAppsEditor.swift */,
@@ -501,7 +498,6 @@
 				1A000000000000000000005A /* RevealState.swift in Sources */,
 				1A000000000000000000005E /* RadialAppearance.swift in Sources */,
 				1A000000000000000000006D /* RevealStrategy.swift in Sources */,
-				1A000000000000000000006F /* Dimming.swift in Sources */,
 				1A000000000000000000007A /* SortOrder.swift in Sources */,
 				1A000000000000000000007C /* CuratedApps.swift in Sources */,
 				1A0000000000000000000080 /* MyAppsEditor.swift in Sources */,
