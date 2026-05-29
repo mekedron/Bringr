@@ -224,26 +224,21 @@ final class WindowEnumerator {
 
     /// The keep/drop verdict for one (normal) window, with a human-readable reason for logging.
     ///
-    /// A window whose owning app is on the user's exclusion list is always dropped — the
-    /// strongest rule, applied before everything else (Bringr-93j.59). A window whose owning app
-    /// isn't an ordinary Dock app is likewise dropped — the switcher shows only Dock apps, on the
-    /// narrow path too, so "all screens" alone stops surfacing background / agent / menu-bar apps
-    /// (Bringr-93j.51).
+    /// Dropped first, regardless of flags: a window whose owning app is on the exclusion list
+    /// (Bringr-93j.59) or isn't an ordinary Dock app (Bringr-93j.51) — the switcher shows only
+    /// Dock apps, on the narrow path too.
     ///
-    /// An on-screen window is kept outright when not validating (`validatesOnscreen` off — the
-    /// screen filter culls off-display phantoms geometrically). When validating (all screens, no
-    /// screen filter) it is kept only if it is on a managed Space (Bringr-93j.60): a real on-screen
-    /// window is; a phantom backing surface Chrome/Ghostty keep is not — and those phantoms,
-    /// having no screen filter to cull them, were exactly what "all screens" surfaced as windows
-    /// that don't exist.
+    /// An on-screen window is kept outright when not validating (the screen filter culls
+    /// off-display phantoms geometrically); when validating (all screens, no screen filter) only
+    /// if it is on a managed Space, so a phantom backing surface is dropped (Bringr-93j.60).
     ///
-    /// An off-screen record that is neither AX-backed nor on a managed Space is a phantom PieSwitcher
-    /// can't focus, dropped regardless of flags: AX backing covers same-Space / minimized / hidden
-    /// windows (Bringr-93j.52), managed-Space membership covers genuine other-Space windows AX
-    /// never enumerates (Bringr-93j.54) — a phantom is neither. The rest are classified by
-    /// precedence — a hidden app's windows count as hidden even if also minimized, since
-    /// `includeHidden` is meant to bring a whole hidden app back — then kept only if the matching
-    /// flag is on; anything left (off-Space) rides on `allSpaces`.
+    /// Off-screen, a record neither AX-backed nor on a managed Space is an unfocusable phantom,
+    /// dropped regardless of flags (Bringr-93j.52/.54). The rest are classified by precedence:
+    /// hidden (Cmd-H, including PieSwitcher's "Hide others") over minimized, then off-Space — each
+    /// kept only if its flag is on. A hidden window must *also* be AX-backed (Bringr-93j.79): a
+    /// Cmd-H'd app's real windows stay AX-listed on the current Space, but the backing surfaces
+    /// Chrome/Chromium keep are managed yet AX-absent, and the per-app hidden stamp marks them too —
+    /// so managed membership alone (the off-Space signal) can't exclude them.
     private func decision(
         for window: RawWindow, allSpaces: Bool, includeMinimized: Bool,
         includeHidden: Bool, validatesOnscreen: Bool
@@ -260,6 +255,7 @@ final class WindowEnumerator {
             return (false, "off-screen, neither AX-backed nor on a managed Space (phantom)")
         }
         if window.isHidden {
+            guard window.isAXBacked else { return (false, "hidden-app surface absent from AX list (phantom)") }
             return (includeHidden, includeHidden ? "hidden-app window (included)" : "hidden-app window (excluded)")
         }
         if window.isMinimized {

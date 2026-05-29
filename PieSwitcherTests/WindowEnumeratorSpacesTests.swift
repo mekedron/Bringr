@@ -216,6 +216,36 @@ final class WindowEnumeratorVisibilityTests: XCTestCase {
             ["Chrome"]
         )
     }
+
+    func testHiddenAppPhantomSurfacesOnAManagedSpaceAreDropped() {
+        // Bringr-93j.79: Chrome/Chromium keep off-screen backing surfaces (thin strips,
+        // off-display scratch surfaces) that the window server reports on a managed Space yet
+        // are never in the app's AX window list. While the app is visible they ride the
+        // off-Space branch and stay out unless all-Spaces is on; but a "Hide others" reveal
+        // Cmd-H's the app, and the per-app hidden stamp then marks every one of its off-screen
+        // windows — phantoms included — as hidden. Managed membership rescued them from the
+        // phantom drop, so "Include hidden" surfaced them as extra windows. Only the AX-backed
+        // real window (the one PieSwitcher can actually focus) must survive. Ground-truth shape:
+        // when hidden, the real window is off-screen too, so all four arrive off-screen + hidden.
+        let source = FakeWindowEnumerationSource(
+            selfPID: selfPID,
+            windows: [raw(number: 1, pid: 10, name: "Chrome")],
+            offscreenWindows: [
+                raw(number: 1, pid: 10, name: "Chrome",
+                    isOnscreen: false, isHidden: true, isAXBacked: true, isManagedWindow: true),
+                raw(number: 2, pid: 10, name: "Chrome",
+                    isOnscreen: false, isHidden: true, isAXBacked: false, isManagedWindow: true),
+                raw(number: 3, pid: 10, name: "Chrome",
+                    isOnscreen: false, isHidden: true, isAXBacked: false, isManagedWindow: true),
+                raw(number: 4, pid: 10, name: "Chrome",
+                    isOnscreen: false, isHidden: true, isAXBacked: false, isManagedWindow: true)
+            ]
+        )
+
+        let apps = WindowEnumerator(source: source).enumerate(includeHidden: true)
+        XCTAssertEqual(apps.map(\.name), ["Chrome"])
+        XCTAssertEqual(apps[0].windows.map(\.id.token), [1])
+    }
 }
 
 /// The Dock-app filter (Bringr-93j.51): the wheel shows only ordinary Dock apps, so broadening
