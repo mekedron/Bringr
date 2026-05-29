@@ -34,7 +34,10 @@ struct RadialAppearance: Equatable, Sendable {
     var innerRadiusPadding: CGFloat = defaultInnerRadiusPadding
 
     static let defaultOuterRadius: CGFloat = RadialGeometry.default.outerRadius
-    static let defaultFillOpacity = 0.18
+    /// Low by default so the genuine Liquid Glass material reads as glass at rest
+    /// rather than as a flat white frost; the user dials it up for a more filled,
+    /// frosted ring (the range now reaches a near-solid slice).
+    static let defaultFillOpacity = 0.1
     static let defaultShowsLabels = true
     /// Zero by default, so the wheel ships exactly where US-006 placed it; the user
     /// opts into pushing it further out.
@@ -50,7 +53,10 @@ struct RadialAppearance: Equatable, Sendable {
     /// Slider bounds shared by Preferences and the clamp on read, so the UI can
     /// never persist a value the model would have to reject.
     static let radiusRange: ClosedRange<CGFloat> = 110...260
-    static let opacityRange: ClosedRange<Double> = 0.05...0.6
+    /// Spans pure glass (`0`, no fill — the genuine material shows through) to a
+    /// near-solid frosted slice (`1`), so the one knob takes the ring from clear
+    /// glass to heavily filled and visibly tunes how glassy the arc looks.
+    static let opacityRange: ClosedRange<Double> = 0...1
     static let innerPaddingRange: ClosedRange<CGFloat> = 0...150
 
     /// `UserDefaults` keys — the single source of truth shared by the Preferences

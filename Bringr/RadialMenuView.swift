@@ -3,19 +3,21 @@ import SwiftUI
 
 /// Renders the radial wheel as three strictly separated z-layers, in this order:
 ///
-///   1. **Glass backdrop** — one continuous Liquid Glass shape *per ring* (the union
-///      of that ring's wedges), blended in a single `GlassEffectContainer`.
+///   1. **Glass backdrop** — ONE Liquid Glass element for the whole wheel, clipped to
+///      the union of *every* visible ring's wedges, pinned to the overlay's fixed
+///      square.
 ///   2. **Structure + emphasis** — per-slice hairline separators and the hover /
 ///      pre-highlight cue, drawn on top of the glass.
 ///   3. **Content** — app icons and labels, drawn last so they are always sharp.
 ///
 /// The layering is load-bearing, not cosmetic. Liquid Glass *blurs whatever is behind
-/// it*, and a `GlassEffectContainer` *merges adjacent glass shapes at rest*. The prior
-/// design applied `.glassEffect` per wedge and interleaved each wedge with its label,
-/// so (a) 8+ touching wedge-glasses morphed into one another — a stray wedge bulged
-/// out of the ring — and (b) every icon sat *behind* a neighbouring wedge's glass and
-/// was smeared. Collapsing each ring to a single glass shape removes the merge, and
-/// hoisting all content above all glass keeps icons and text crisp.
+/// it*, and a `GlassEffectContainer` *merges adjacent glass shapes at rest* and
+/// re-anchors that merged capsule whenever a glass child is added or removed. A prior
+/// design gave each ring its own glass element, so the moment hover added the windows
+/// sub-wheel the container re-anchored and the apps ring visibly jumped. Using a single
+/// element whose *shape grows* — from the apps annulus to apps-plus-windows — leaves
+/// nothing to re-anchor, so the wheel stays put on hover. Hoisting all content above
+/// all glass keeps icons and text crisp (glass can't refract what sits in front of it).
 ///
 /// No animations. Wedge geometry comes straight from the tested `RadialLayout`, shared
 /// with hit-testing, so rendering and selection can never desync.
@@ -40,26 +42,15 @@ struct RadialMenuView: View {
         )
     }
 
-    /// Layer 1 — the glass. One shape per ring keeps each ring a *single* glass
-    /// element, so the container only ever blends the (concentric, abutting) ring
-    /// annuli into one continuous frosted surface — never a field of wedges that
-    /// morph apart. A cohesive drop shadow seats the whole wheel as a floating glass
-    /// object so its silhouette reads on any desktop.
+    /// Layer 1 — the glass. A SINGLE glass element clipped to the union of every
+    /// visible ring's wedges and pinned to the overlay's fixed square, so its shape
+    /// (and therefore its centre) never moves as rings come and go — only grows from
+    /// the apps annulus to apps-plus-windows. A cohesive drop shadow seats the whole
+    /// wheel as a floating glass object so its silhouette reads on any desktop.
     private var glass: some View {
-        glassRings.shadow(color: .black.opacity(0.28), radius: 10, y: 3)
-    }
-
-    @ViewBuilder
-    private var glassRings: some View {
-        if #available(macOS 26.0, *) {
-            GlassEffectContainer(spacing: 0) {
-                ForEach(controller.rings) { ring in RadialRingGlass(ring: ring) }
-            }
-        } else {
-            ZStack {
-                ForEach(controller.rings) { ring in RadialRingGlass(ring: ring) }
-            }
-        }
+        RadialGlassBackdrop(shape: RadialGlassShape(layouts: controller.rings.map(\.layout)))
+            .frame(width: controller.overallDiameter, height: controller.overallDiameter)
+            .shadow(color: .black.opacity(0.3), radius: 12, y: 4)
     }
 
     /// Layer 2 — per-slice separators and the hover / pre-highlight cue, above the
@@ -88,21 +79,52 @@ struct RadialMenuView: View {
     }
 }
 
-/// The Liquid Glass backdrop for one ring: glass clipped to the union of that ring's
-/// wedges (an annulus, or annulus-with-gaps for an uneven window sub-wheel), so it is
-/// exactly one glass element. `Color.clear` carries the effect because glass is a
-/// backdrop layer, independent of content alpha. Falls back to `.ultraThinMaterial`
-/// before macOS 26.
-struct RadialRingGlass: View {
-    let ring: RadialRing
+/// The wheel's single Liquid Glass backdrop, clipped to `shape` (the union of every
+/// visible ring's wedges). `Color.clear` carries the genuine `.regular` material on
+/// macOS 26+ because glass is a backdrop layer, independent of content alpha. Before
+/// macOS 26 there is no Liquid Glass, so it falls back to a frosted `.ultraThinMaterial`
+/// in the same shape, lifted with a soft top-down sheen so the wheel still reads as a
+/// defined translucent object rather than a flat blur.
+struct RadialGlassBackdrop: View {
+    let shape: RadialGlassShape
 
     var body: some View {
-        let shape = RadialRingShape(layout: ring.layout)
         if #available(macOS 26.0, *) {
-            Color.clear.glassEffect(.regular, in: shape)
+            GlassEffectContainer(spacing: 0) {
+                Color.clear.glassEffect(.regular, in: shape)
+            }
         } else {
-            Color.clear.background(.ultraThinMaterial, in: shape)
+            shape
+                .fill(.ultraThinMaterial)
+                .overlay(
+                    LinearGradient(
+                        colors: [.white.opacity(0.16), .white.opacity(0.02)],
+                        startPoint: .top,
+                        endPoint: .bottom
+                    )
+                    .clipShape(shape)
+                )
         }
+    }
+}
+
+/// The union of every visible ring's wedges — the single clip-shape for the wheel's one
+/// glass element. Composed from the per-ring `RadialRingShape` (itself the union of that
+/// ring's tested `RadialWedge` paths), so the glass edge lands on exactly the geometry
+/// the slices and hit-testing use, and the apps annulus and the windows arc read as one
+/// continuous, concentric glass surface. Because every wedge is drawn from the same ring
+/// centre, the union stays centred whatever rings are present, so the glass never shifts.
+struct RadialGlassShape: Shape {
+    /// One layout per visible ring (apps, then the hovered app's windows), innermost
+    /// first; empty when the wheel is closed.
+    let layouts: [RadialLayout]
+
+    func path(in rect: CGRect) -> Path {
+        var path = Path()
+        for layout in layouts {
+            path.addPath(RadialRingShape(layout: layout).path(in: rect))
+        }
+        return path
     }
 }
 
@@ -171,9 +193,10 @@ struct RadialRingContent: View {
     }
 }
 
-/// The union of a ring's wedges, used as the single glass clip-shape for that ring.
-/// Built by summing the tested `RadialWedge` paths, so the glass edge lands exactly on
-/// the same geometry the slices and hit-testing use.
+/// The union of one ring's wedges (an annulus, or annulus-with-gaps for an uneven
+/// window sub-wheel), summed from the tested `RadialWedge` paths so its edge lands
+/// exactly on the geometry the slices and hit-testing use. `RadialGlassShape` composes
+/// one of these per visible ring into the wheel's single glass clip-shape.
 struct RadialRingShape: Shape {
     let layout: RadialLayout
 
