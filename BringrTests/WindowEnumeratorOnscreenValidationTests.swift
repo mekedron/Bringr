@@ -71,24 +71,43 @@ final class WindowEnumeratorOnscreenValidationTests: XCTestCase {
         XCTAssertEqual(apps[0].windows.map(\.id.token).sorted(), [1, 3])
     }
 
-    func testBroadenedCacheIsKeyedByValidatesOnscreen() {
-        // The on-screen managed stamp differs between a validating and a non-validating broadened
-        // read, so the per-summon cache must not serve one for the other — a key mismatch
-        // re-queries, and a matching key is reused.
+    func testValidatedSummonScanServesUnvalidatedSubWheelFromCache() {
+        // Bringr-93j.68: the apps ring is all-screens (validated), the windows sub-wheel screen-scoped
+        // (unvalidated). A validated scan is a strict superset — validateOnscreen only *adds* a managed
+        // stamp — so the sub-wheel reuses it rather than re-running the broadened source query (whose AX
+        // classify hangs ~1–2 s when the reveal's `activate` is mid-foreground-transition). The reused
+        // raw list still gets the unvalidated keep-rule, which trusts on-screen records, so the unmanaged
+        // on-screen record the validated apps ring dropped reappears in the unvalidated sub-wheel.
         let source = FakeWindowEnumerationSource(
             selfPID: selfPID,
             windows: [raw(number: 1, pid: 10, name: "Chrome")],
             offscreenWindows: [
-                raw(number: 1, pid: 10, name: "Chrome"),
-                raw(number: 2, pid: 20, name: "Mail", isOnscreen: false)
+                raw(number: 1, pid: 10, name: "Chrome", isManagedWindow: true),
+                raw(number: 2, pid: 10, name: "Chrome", isManagedWindow: false)
             ]
         )
         let enumerator = WindowEnumerator(source: source)
 
-        _ = enumerator.enumerate(allSpaces: true, validatesOnscreen: true, recordingRecency: true)
-        _ = enumerator.enumerate(allSpaces: true, validatesOnscreen: false) // different key → re-query
-        XCTAssertEqual(source.broadenedCallCount, 2)
-        _ = enumerator.enumerate(allSpaces: true, validatesOnscreen: false) // same key → cache hit
+        let appsRing = enumerator.enumerate(allSpaces: true, validatesOnscreen: true, recordingRecency: true)
+        let subWheel = enumerator.enumerate(allSpaces: true, validatesOnscreen: false)
+
+        XCTAssertEqual(source.broadenedCallCount, 1)                       // reused, not re-queried
+        XCTAssertEqual(appsRing[0].windows.map(\.id.token), [1])           // validated drops the unmanaged one
+        XCTAssertEqual(subWheel[0].windows.map(\.id.token).sorted(), [1, 2]) // unvalidated trusts both
+    }
+
+    func testUnvalidatedSummonScanDoesNotServeValidatedRead() {
+        // The reverse is unsafe (an unvalidated cache lacks the managed stamps a validated keep-rule
+        // needs — it would drop every on-screen window), so a validated read re-queries the source.
+        let source = FakeWindowEnumerationSource(
+            selfPID: selfPID,
+            windows: [raw(number: 1, pid: 10, name: "Chrome")],
+            offscreenWindows: [raw(number: 1, pid: 10, name: "Chrome", isManagedWindow: true)]
+        )
+        let enumerator = WindowEnumerator(source: source)
+
+        _ = enumerator.enumerate(allSpaces: true, validatesOnscreen: false, recordingRecency: true)
+        _ = enumerator.enumerate(allSpaces: true, validatesOnscreen: true)
         XCTAssertEqual(source.broadenedCallCount, 2)
     }
 }

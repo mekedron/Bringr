@@ -193,7 +193,13 @@ final class WindowEnumerator {
                 includingOffscreen: false, validatingOnscreen: validatingOnscreen
             ).filter(isNormalWindow)
         }
-        if let cached = broadenedRawCache, cached.validatingOnscreen == validatingOnscreen {
+        // A validated (all-screens) cached scan also serves an unvalidated (screen-scoped) read, not
+        // only an exact match (Bringr-93j.68): validateOnscreen only *adds* a managed stamp the
+        // unvalidated keep-rule ignores, so it's a safe superset (never the reverse). Without it the
+        // validated apps-ring scan couldn't feed the unvalidated windows sub-wheel, so each first hover
+        // re-ran the broadened AX classify — which hangs ~1–2 s mid-`activate` when Preferences is open.
+        if let cached = broadenedRawCache,
+           cached.validatingOnscreen == validatingOnscreen || cached.validatingOnscreen {
             return cached.windows
         }
         let normal = source.rawWindows(
