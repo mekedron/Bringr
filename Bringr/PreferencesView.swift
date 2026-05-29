@@ -139,6 +139,8 @@ struct PreferencesView: View {
                 .font(.callout)
                 .foregroundStyle(.secondary)
                 .fixedSize(horizontal: false, vertical: true)
+
+            TrackpadHapticsSettings()
         }
     }
 

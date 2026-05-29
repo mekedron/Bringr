@@ -59,6 +59,10 @@ final class RadialMenuController: ObservableObject {
     /// Reads the persisted apps/windows collection scope at summon time (Bringr-93j.48),
     /// mirroring `modeProvider`, so a Preferences change applies on the next summon.
     private let collectionProvider: () -> CollectionPreferences
+    /// Owns the optional trackpad-haptic-on-hover policy (Bringr-93j.44): resolves whether
+    /// haptics fire for the summon (setting on + no external mouse) and taps as hover moves
+    /// to a new slice. Resolved per summon like the other read-fresh settings.
+    private let haptics: HapticController
     /// The last global cursor position seen inside the cursor-lock region while it is
     /// engaged — the point a rejected (out-of-region) move is snapped back to. Refreshed
     /// on every allowed move, so it is always a valid in-region anchor (Bringr-93j.29).
@@ -91,7 +95,8 @@ final class RadialMenuController: ObservableObject {
         cursorLockProvider: @escaping () -> Bool = { CursorLock.isEnabled() },
         hideOnCommitProvider: @escaping () -> Bool = { HideOnCommit.isEnabled() },
         collectionProvider: @escaping () -> CollectionPreferences = { CollectionPreferences.current() },
-        monitorInstaller: EventMonitorInstaller = .live
+        monitorInstaller: EventMonitorInstaller = .live,
+        haptics: HapticController? = nil
     ) {
         self.registry = registry
         self.modeProvider = modeProvider
@@ -101,6 +106,7 @@ final class RadialMenuController: ObservableObject {
         self.hideOnCommitProvider = hideOnCommitProvider
         self.collectionProvider = collectionProvider
         self.monitorInstaller = monitorInstaller
+        self.haptics = haptics ?? HapticController()
         self.navigator = RadialNavigator(
             windowControl: windowControl ?? WindowController(),
             baseGeometry: geometry
@@ -200,6 +206,9 @@ final class RadialMenuController: ObservableObject {
         // Apply the persisted "leave only my selection on screen" setting for this summon
         // so a commit can clear everything else away (Bringr-93j.27).
         navigator.setHideOnCommitEnabled(hideOnCommitProvider())
+        // Resolve the trackpad-haptic state once for this summon (Bringr-93j.44), like the
+        // other read-fresh settings; the per-hover check then reads only this cheap state.
+        haptics.resolveForSummon()
         navigator.open(appNodes: root.resolvedChildren())
         syncFromNavigator()
         let side = navigator.overallDiameter
@@ -334,21 +343,12 @@ final class RadialMenuController: ObservableObject {
             warpCursor(toGlobalPoint: lastLockedCursor)
             return
         }
+        let previousHover = navigator.hovered
         navigator.updateHover(navigator.region(forOffset: layoutOffset))
+        haptics.hoverChanged(from: previousHover, to: navigator.hovered)
         syncFromNavigator()
         if navigator.cursorLockEngaged { lastLockedCursor = cursor }
         scheduleSubWheelRetry(isRetry: isRetry)
-    }
-
-    /// Snap the hardware pointer to a global (AppKit y-up) point — the cursor-lock
-    /// boundary side effect (Bringr-93j.29). CoreGraphics warps in the top-left-origin,
-    /// y-down display space, so the point is flipped about the primary display height; the
-    /// mouse/cursor re-association clears the brief post-warp move-suppression window so the
-    /// pointer stays responsive while the user pushes against the boundary.
-    private func warpCursor(toGlobalPoint point: CGPoint) {
-        let primaryHeight = NSScreen.screens.first?.frame.height ?? 0
-        CGWarpMouseCursorPosition(CGPoint(x: point.x, y: primaryHeight - point.y))
-        CGAssociateMouseAndMouseCursorPosition(1)
     }
 
     /// Re-run a hover that landed on an app slice whose sub-wheel didn't open, so it
@@ -372,17 +372,6 @@ final class RadialMenuController: ObservableObject {
     }
 
     // MARK: - Cursor → target resolution
-
-    /// Collapse a hover region to the commit vocabulary: any ring slice is a target,
-    /// the dead zone / outside is none. The state machine only needs "a slice" vs
-    /// "none" to pick select vs cancel; `commitSelection(region:)` reads the live
-    /// region itself to resolve which window.
-    private func sliceTarget(_ region: HoverRegion) -> SliceTarget {
-        switch region {
-        case .slice(_, let index): return .slice(index)
-        case .none: return .none
-        }
-    }
 
     /// Offset from the ring centre for a global (AppKit y-up) cursor, flipped into
     /// the layout's y-down space.
