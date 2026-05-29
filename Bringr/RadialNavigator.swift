@@ -62,24 +62,22 @@ final class RadialNavigator {
     /// a no-op) and the un-isolate when the cursor leaves the windows ring.
     private(set) var expandedWindowIndex: Int?
     /// In an overflow window sub-wheel (more windows than apps), the index of the
-    /// window currently magnified to a full app-arc (the US-016 fisheye focus), or
-    /// `nil` when there is no overflow — i.e. every window slice is already a full
-    /// app-arc and focus has no geometric effect.
+    /// window magnified to a full app-arc (the US-016 fisheye focus), or `nil` when
+    /// there is no overflow and focus has no geometric effect.
     private(set) var focusedWindowIndex: Int?
     /// The window slice to pre-highlight — the app's remembered last selection —
     /// while its sub-wheel is open, or `.none` when nothing is remembered. Distinct
     /// from `hovered`: it suggests a choice before the cursor reaches it. (US-012 AC4)
     private(set) var prehighlighted: HoverRegion = .none
+    /// Confirm-mode target a number focused but didn't activate; an arrow/Space/Return commits it (Bringr-93j.72).
+    var pendingConfirmation: HoverRegion?
     /// Whether the optional second-level cursor lock (Bringr-93j.29) is currently
     /// confining the pointer to the open app's windows sub-wheel and its parent app
-    /// arc. Engaged when the cursor first enters the windows ring (level 1); released
-    /// when it returns to the apps ring — the parent app arc being the only level-0
-    /// slice reachable while confined. Always false when the setting is disabled. The
-    /// controller reads it to decide whether to snap a stray move back.
+    /// arc. Engaged when the cursor enters the windows ring (level 1); released when
+    /// it returns to the apps ring. Always false when the setting is disabled.
     private(set) var cursorLockEngaged = false
     /// Whether the cursor-lock setting is on for this summon. Pushed in before `open`
-    /// from the persisted setting (mirroring the strategy/geometry setters), so a
-    /// Preferences change applies on the next open. When false the lock never engages.
+    /// from the persisted setting, so a Preferences change applies on the next open.
     private var cursorLockEnabled = false
 
     private let windowControl: WindowController
@@ -186,6 +184,7 @@ final class RadialNavigator {
         focusedWindowIndex = nil
         hovered = .none
         prehighlighted = .none
+        pendingConfirmation = nil
         cursorLockEngaged = false
     }
 
@@ -199,6 +198,7 @@ final class RadialNavigator {
     /// - off every ring (dead zone / outside): collapse back to apps and restore.
     func updateHover(_ region: HoverRegion) {
         hovered = region
+        pendingConfirmation = nil // any focus move clears a pending number-confirm (Bringr-93j.72)
         switch region {
         case .slice(level: 0, let index):
             // Back on the apps ring: the cursor reached the parent app arc, the gate

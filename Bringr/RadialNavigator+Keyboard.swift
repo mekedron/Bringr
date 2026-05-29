@@ -1,8 +1,8 @@
 import CoreGraphics
 import Foundation
 
-/// Keyboard-driven navigation over the navigator's live rings (Bringr-93j.71), split out so
-/// `RadialNavigator.swift` stays within the file-length budget (mirroring
+/// Keyboard-driven navigation over the navigator's live rings (Bringr-93j.71, Bringr-93j.72),
+/// split out so `RadialNavigator.swift` stays within the file-length budget (mirroring
 /// `RadialNavigator+Region.swift`).
 ///
 /// Keyboard focus deliberately reuses the exact hover machinery — `updateHover` to move focus
@@ -14,10 +14,15 @@ import Foundation
 /// are all readable here, so these methods stay pure decisions over the live tree.
 extension RadialNavigator {
     /// Move keyboard focus one step in `arrow`'s direction, previewing the new target. Left/
-    /// Right move within the current ring (wrapping around the wheel); Down drills from an app
-    /// into its windows; Up steps a window back to its parent app. The first arrow press while
-    /// nothing is focused lands on the top app (12 o'clock).
+    /// Right move within the current ring (wrapping around the wheel); Up drills from an app
+    /// into its windows and Down steps a window back to its parent app (Bringr-93j.72 reversed
+    /// the vertical sense). The first arrow press while nothing is focused lands on the top app.
+    ///
+    /// In confirmation mode, once a number has focused a target awaiting confirmation, an arrow
+    /// confirms it rather than moving (Bringr-93j.72): `pendingConfirmation` is set only by a
+    /// number press in confirm mode, so its presence alone means an arrow should commit.
     func keyboardMove(_ arrow: KeyboardArrow) -> KeyboardNavOutcome {
+        if pendingConfirmation != nil { return keyboardConfirm() }
         guard let appsRing = rings.first, !appsRing.nodes.isEmpty else { return .ignored }
         let appCount = appsRing.nodes.count
 
@@ -31,10 +36,10 @@ extension RadialNavigator {
                 updateHover(.slice(level: 0, index: KeyboardNavMath.wrap(index - 1, count: appCount)))
             case .right:
                 updateHover(.slice(level: 0, index: KeyboardNavMath.wrap(index + 1, count: appCount)))
-            case .down where hasWindowSubWheel:
+            case .up where hasWindowSubWheel:
                 updateHover(.slice(level: 1, index: 0))
-            case .down, .up:
-                break // Up at the top level, or Down into a window-less app, is a no-op.
+            case .up, .down:
+                break // Down at the top level, or Up into a window-less app, is a no-op.
             }
             return .handled
         case .slice(level: 1, let index):
@@ -53,17 +58,18 @@ extension RadialNavigator {
             updateHover(.slice(level: 1, index: KeyboardNavMath.wrap(index - 1, count: windowCount)))
         case .right where windowCount > 0:
             updateHover(.slice(level: 1, index: KeyboardNavMath.wrap(index + 1, count: windowCount)))
-        case .up:
+        case .down:
             updateHover(.slice(level: 0, index: expandedAppIndex ?? 0))
-        case .left, .right, .down:
-            break // Down has no deeper level in v1; left/right no-op on an empty ring.
+        case .left, .right, .up:
+            break // Up has no deeper level in v1; left/right no-op on an empty ring.
         }
     }
 
     /// React to a pressed app/window number. The active context follows the focused level: at
     /// the apps level (or with nothing focused yet) the digit picks an app; once focus is on a
-    /// window it picks a window — app numbers stay disabled until Escape steps back up
-    /// (Bringr-93j.71). `requireConfirmation` turns an otherwise instant activation into a focus.
+    /// window it picks a window — app numbers stay disabled until the focus steps back up
+    /// (Bringr-93j.71). `requireConfirmation` turns an otherwise instant activation into a focus
+    /// that is armed for confirmation (Bringr-93j.72).
     func keyboardNumber(_ digit: Int, requireConfirmation: Bool) -> KeyboardNavOutcome {
         guard let index = KeyboardNavMath.index(forDigit: digit), !rings.isEmpty else { return .ignored }
         if case .slice(level: 1, _) = hovered {
@@ -74,43 +80,62 @@ extension RadialNavigator {
 
     private func keyboardAppNumber(at index: Int, requireConfirmation: Bool) -> KeyboardNavOutcome {
         guard let appsRing = rings.first, index >= 0, index < appsRing.nodes.count else { return .handled }
+        // Re-pressing the focused window-less app's own number confirms it (Bringr-93j.72).
+        if requireConfirmation, pendingConfirmation == .slice(level: 0, index: index) {
+            return commitOutcome(.slice(level: 0, index: index))
+        }
         // Focus + preview the app: this expands it and resolves its live windows sub-wheel,
         // which is what tells us how many windows it has.
         updateHover(.slice(level: 0, index: index))
         let windowCount = hasWindowSubWheel ? rings[1].nodes.count : 0
 
         if windowCount == 0 {
-            // No window to drill into: behave as if the app slice itself was chosen.
-            if requireConfirmation { return .handled }
-            guard let result = commit(.slice(level: 0, index: index)) else { return .handled }
-            return .committed(result)
+            // No window to drill into: the app slice itself is the selection.
+            return requireConfirmation ? arm(.slice(level: 0, index: index))
+                                       : commitOutcome(.slice(level: 0, index: index))
         }
-        if windowCount == 1, !requireConfirmation {
-            // Exactly one window: open it straight away.
-            guard let result = commit(.slice(level: 1, index: 0)) else { return .handled }
-            return .committed(result)
+        if windowCount == 1 {
+            // Exactly one window: it is the selection — open it now, or arm it for confirmation.
+            if !requireConfirmation { return commitOutcome(.slice(level: 1, index: 0)) }
+            updateHover(.slice(level: 1, index: 0))
+            return arm(.slice(level: 1, index: 0))
         }
-        // Several windows (or a single one awaiting confirmation): drop into the windows and
-        // preview the first, so the next number addresses windows.
+        // Several windows: drop into them and preview the first, so the next number addresses
+        // windows; the user still has to pick one, so nothing is armed yet.
         updateHover(.slice(level: 1, index: 0))
         return .handled
     }
 
     private func keyboardWindowNumber(at index: Int, requireConfirmation: Bool) -> KeyboardNavOutcome {
         guard rings.count > 1, index >= 0, index < rings[1].nodes.count else { return .handled }
-        if requireConfirmation {
-            updateHover(.slice(level: 1, index: index)) // focus + preview; Return commits.
-            return .handled
+        guard requireConfirmation else { return commitOutcome(.slice(level: 1, index: index)) }
+        // Re-pressing the focused window's own number confirms it; a different number focuses
+        // and arms the new window (Bringr-93j.72).
+        if pendingConfirmation == .slice(level: 1, index: index) {
+            return commitOutcome(.slice(level: 1, index: index))
         }
-        guard let result = commit(.slice(level: 1, index: index)) else { return .handled }
+        updateHover(.slice(level: 1, index: index))
+        return arm(.slice(level: 1, index: index))
+    }
+
+    /// Arm `region` for confirmation: a number focused a terminal target in confirm mode, so an
+    /// arrow, Space, Return, or re-pressing the same number then activates it (Bringr-93j.72).
+    private func arm(_ region: HoverRegion) -> KeyboardNavOutcome {
+        pendingConfirmation = region
+        return .handled
+    }
+
+    /// Commit `region`, mapping a successful commit to `.committed` and a non-selectable region
+    /// to a consumed `.handled` no-op (so the key never leaks to the app underneath).
+    private func commitOutcome(_ region: HoverRegion) -> KeyboardNavOutcome {
+        guard let result = commit(region) else { return .handled }
         return .committed(result)
     }
 
-    /// Activate whatever is focused (Return). A dead-zone / nothing-focused Return is consumed as
-    /// a no-op rather than leaking to the app underneath.
+    /// Activate whatever is focused (Return / Space). A dead-zone / nothing-focused confirm is
+    /// consumed as a no-op rather than leaking to the app underneath.
     func keyboardConfirm() -> KeyboardNavOutcome {
-        guard let result = commit(hovered) else { return .handled }
-        return .committed(result)
+        commitOutcome(hovered)
     }
 
     /// Escape: from a focused window, step back up to its parent app — restoring that window's

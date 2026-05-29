@@ -79,6 +79,40 @@ final class RadialMenuControllerHoverTests: XCTestCase {
                        "every monitor installed on summon must be removed on dismiss")
     }
 
+    // MARK: - Keyboard-navigation gate (Bringr-93j.71/.72)
+
+    /// The live `KeyboardNavMonitor` only consumes keys while `acceptsKeyboardNav` is true, so the
+    /// controller must resolve the per-summon setting and gate on it: keys are handled while the
+    /// wheel is open with the feature on, and pass straight through once it closes. (The focus
+    /// movement and apps-ring accent it drives are covered against live rings in
+    /// `RadialNavigatorKeyboardTests`.)
+    func testAcceptsKeyboardNavTracksVisibilityWhenEnabled() {
+        setKeyboardNavEnabled()
+        let controller = makeController(mode: .clickToStay, installer: MonitorRecorder().installer())
+        XCTAssertFalse(controller.acceptsKeyboardNav, "closed wheel never consumes keys")
+
+        controller.triggerPressed(for: .mouseChord, at: CGPoint(x: 400, y: 400))
+        XCTAssertTrue(controller.acceptsKeyboardNav, "open wheel with the feature on handles keys")
+
+        controller.escapePressed()
+        XCTAssertFalse(controller.acceptsKeyboardNav, "a closed wheel passes keys through again")
+    }
+
+    func testDoesNotAcceptKeyboardNavWhenFeatureOff() {
+        // The feature defaults off, so even an open wheel must let keys pass through untouched.
+        let controller = makeController(mode: .clickToStay, installer: MonitorRecorder().installer())
+        controller.triggerPressed(for: .mouseChord, at: CGPoint(x: 400, y: 400))
+        XCTAssertFalse(controller.acceptsKeyboardNav)
+    }
+
+    /// Set up: enable keyboard navigation in the standard defaults the controller reads at summon,
+    /// cleaning up after so the global domain isn't polluted for other tests.
+    private func setKeyboardNavEnabled() {
+        let defaults = UserDefaults.standard
+        defaults.set(true, forKey: KeyboardNavigation.enabledKey)
+        addTeardownBlock { defaults.removeObject(forKey: KeyboardNavigation.enabledKey) }
+    }
+
     // MARK: - Fixtures
 
     private func makeController(

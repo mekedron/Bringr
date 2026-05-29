@@ -43,26 +43,37 @@ final class RadialNavigatorKeyboardTests: XCTestCase {
         XCTAssertEqual(fixture.navigator.hovered, .slice(level: 0, index: 1))
     }
 
-    func testDownDrillsIntoWindowsAndUpReturns() {
+    func testUpDrillsIntoWindowsAndDownReturns() {
         let fixture = makeFixture()
         fixture.navigator.open(appNodes: fixture.appNodes)
         _ = fixture.navigator.keyboardMove(.right)               // focus Chrome
 
-        _ = fixture.navigator.keyboardMove(.down)                // into Chrome's windows
+        _ = fixture.navigator.keyboardMove(.up)                  // into Chrome's windows (Bringr-93j.72)
         XCTAssertEqual(fixture.navigator.hovered, .slice(level: 1, index: 0))
         XCTAssertEqual(fixture.navigator.expandedWindowIndex, 0, "the focused window is isolated/previewed")
 
-        _ = fixture.navigator.keyboardMove(.up)                  // back to the app
+        _ = fixture.navigator.keyboardMove(.down)                // back to the app (Bringr-93j.72)
         XCTAssertEqual(fixture.navigator.hovered, .slice(level: 0, index: 0))
-        XCTAssertNil(fixture.navigator.expandedWindowIndex, "stepping up restores the window isolation")
+        XCTAssertNil(fixture.navigator.expandedWindowIndex, "stepping back restores the window isolation")
         XCTAssertEqual(fixture.navigator.rings.count, 2, "the app stays expanded")
+    }
+
+    func testDownAtAppLevelIsNoOp() {
+        let fixture = makeFixture()
+        fixture.navigator.open(appNodes: fixture.appNodes)
+        _ = fixture.navigator.keyboardMove(.right)               // focus an app (top level)
+
+        _ = fixture.navigator.keyboardMove(.down)                // down no longer drills (reversed)
+
+        XCTAssertEqual(fixture.navigator.hovered, .slice(level: 0, index: 0), "down at the apps level does nothing")
+        XCTAssertEqual(fixture.navigator.rings.count, 2, "the app stays expanded, no deeper move happened")
     }
 
     func testArrowWrapsAcrossWindows() {
         let fixture = makeFixture()
         fixture.navigator.open(appNodes: fixture.appNodes)
         _ = fixture.navigator.keyboardMove(.right)               // Chrome
-        _ = fixture.navigator.keyboardMove(.down)                // window 0 (Inbox)
+        _ = fixture.navigator.keyboardMove(.up)                  // window 0 (Inbox)
 
         _ = fixture.navigator.keyboardMove(.right)
         XCTAssertEqual(fixture.navigator.hovered, .slice(level: 1, index: 1)) // Docs
@@ -83,7 +94,7 @@ final class RadialNavigatorKeyboardTests: XCTestCase {
         let fixture = makeFixture()
         fixture.navigator.open(appNodes: fixture.appNodes)
         _ = fixture.navigator.keyboardMove(.right)               // Chrome
-        _ = fixture.navigator.keyboardMove(.down)                // a Chrome window (Docs parked)
+        _ = fixture.navigator.keyboardMove(.up)                  // a Chrome window (Docs parked)
 
         let outcome = fixture.navigator.keyboardEscape()
 
@@ -133,7 +144,8 @@ final class RadialNavigatorKeyboardTests: XCTestCase {
 
         XCTAssertEqual(outcome, .handled, "confirmation turns instant activation into a preview")
         XCTAssertEqual(fixture.navigator.hovered, .slice(level: 1, index: 0))
-        XCTAssertNil(fixture.fake.focusedWindow, "nothing is committed until Return")
+        XCTAssertEqual(fixture.navigator.pendingConfirmation, .slice(level: 1, index: 0), "the window is armed")
+        XCTAssertNil(fixture.fake.focusedWindow, "nothing is committed until confirmed")
     }
 
     func testWindowNumberCommitsThatWindow() {
@@ -156,6 +168,7 @@ final class RadialNavigatorKeyboardTests: XCTestCase {
 
         XCTAssertEqual(outcome, .handled)
         XCTAssertEqual(fixture.navigator.hovered, .slice(level: 1, index: 1))
+        XCTAssertEqual(fixture.navigator.pendingConfirmation, .slice(level: 1, index: 1), "the window is armed")
         XCTAssertNil(fixture.fake.focusedWindow)
     }
 
@@ -176,7 +189,7 @@ final class RadialNavigatorKeyboardTests: XCTestCase {
         let fixture = makeFixture()
         fixture.navigator.open(appNodes: fixture.appNodes)
         _ = fixture.navigator.keyboardMove(.right)               // Chrome
-        _ = fixture.navigator.keyboardMove(.down)                // window 0 (Inbox)
+        _ = fixture.navigator.keyboardMove(.up)                  // window 0 (Inbox)
 
         let outcome = fixture.navigator.keyboardConfirm()
 
@@ -204,6 +217,66 @@ final class RadialNavigatorKeyboardTests: XCTestCase {
         XCTAssertEqual(outcome, .handled, "Return over nothing is consumed, not leaked")
         XCTAssertNil(fixture.fake.focusedWindow)
         XCTAssertEqual(fixture.navigator.rings.count, 1, "the wheel stays open")
+    }
+
+    // MARK: - Confirmation extras (Bringr-93j.72)
+
+    func testArrowConfirmsArmedTargetInsteadOfMoving() {
+        let fixture = makeFixture()
+        fixture.navigator.open(appNodes: fixture.appNodes)
+        _ = fixture.navigator.keyboardNumber(2, requireConfirmation: true) // Ghostty: focus + arm its window
+        XCTAssertEqual(fixture.navigator.pendingConfirmation, .slice(level: 1, index: 0))
+
+        let outcome = fixture.navigator.keyboardMove(.down) // an arrow confirms the armed target
+
+        XCTAssertEqual(outcome, .committed(.window(WindowID(app: AppID(pid: 20), token: 21))))
+        XCTAssertEqual(fixture.fake.focusedWindow, WindowID(app: AppID(pid: 20), token: 21))
+    }
+
+    func testRepeatingTheSameWindowNumberConfirms() {
+        let fixture = makeFixture()
+        fixture.navigator.open(appNodes: fixture.appNodes)
+        _ = fixture.navigator.keyboardNumber(1, requireConfirmation: true) // into Chrome's windows
+        _ = fixture.navigator.keyboardNumber(2, requireConfirmation: true) // focus + arm window 2 (Docs)
+
+        let outcome = fixture.navigator.keyboardNumber(2, requireConfirmation: true) // same number again confirms
+
+        XCTAssertEqual(outcome, .committed(.window(WindowID(app: AppID(pid: 10), token: 12))))
+        XCTAssertEqual(fixture.fake.focusedWindow, WindowID(app: AppID(pid: 10), token: 12))
+    }
+
+    func testConfirmKeyActivatesArmedTarget() {
+        let fixture = makeFixture()
+        fixture.navigator.open(appNodes: fixture.appNodes)
+        _ = fixture.navigator.keyboardNumber(2, requireConfirmation: true) // Ghostty: focus + arm its window
+
+        let outcome = fixture.navigator.keyboardConfirm() // Return / Space / keypad Enter all route here
+
+        XCTAssertEqual(outcome, .committed(.window(WindowID(app: AppID(pid: 20), token: 21))))
+        XCTAssertEqual(fixture.fake.focusedWindow, WindowID(app: AppID(pid: 20), token: 21))
+    }
+
+    func testArrowStillMovesWhenNothingIsArmed() {
+        let fixture = makeFixture()
+        fixture.navigator.open(appNodes: fixture.appNodes)
+        _ = fixture.navigator.keyboardMove(.right) // focus app 0, nothing armed
+
+        let outcome = fixture.navigator.keyboardMove(.right) // with nothing armed, arrows still move
+
+        XCTAssertEqual(outcome, .handled)
+        XCTAssertEqual(fixture.navigator.hovered, .slice(level: 0, index: 1))
+        XCTAssertNil(fixture.fake.focusedWindow, "moving did not commit anything")
+    }
+
+    func testHoverMoveClearsArmedConfirmation() {
+        let fixture = makeFixture()
+        fixture.navigator.open(appNodes: fixture.appNodes)
+        _ = fixture.navigator.keyboardNumber(2, requireConfirmation: true) // arm Ghostty's window
+        XCTAssertNotNil(fixture.navigator.pendingConfirmation)
+
+        fixture.navigator.updateHover(.slice(level: 1, index: 0)) // a hover move (mouse or keyboard)
+
+        XCTAssertNil(fixture.navigator.pendingConfirmation, "any focus move disarms the pending confirmation")
     }
 
     // MARK: - Fixtures

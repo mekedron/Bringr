@@ -33,8 +33,8 @@ struct KeyboardNavigationSettings: View {
     private var arrowsControls: some View {
         VStack(alignment: .leading, spacing: 8) {
             Toggle("Arrow keys", isOn: $arrows)
-            Text("Left and right move between apps — and between an app's windows; down opens the "
-                 + "focused app's windows and up goes back; Return activates the focused item.")
+            Text("Left and right move between apps — and between an app's windows; up opens the "
+                 + "focused app's windows and down goes back; Return or Space activates the focused item.")
                 .font(.callout)
                 .foregroundStyle(.secondary)
                 .fixedSize(horizontal: false, vertical: true)
@@ -52,9 +52,10 @@ struct KeyboardNavigationSettings: View {
                 .fixedSize(horizontal: false, vertical: true)
 
             if numbers {
-                Toggle("Require Return to confirm a number", isOn: $requireConfirmation)
-                Text("A number only focuses and previews the item; press Return to activate it, so "
-                     + "you can look inside a window before committing.")
+                Toggle("Require a confirm key after a number", isOn: $requireConfirmation)
+                Text("A number only focuses and previews the item, so you can look inside a window "
+                     + "before committing. Confirm with Return, Space, an arrow key, or by pressing "
+                     + "the same number again.")
                     .font(.callout)
                     .foregroundStyle(.secondary)
                     .fixedSize(horizontal: false, vertical: true)

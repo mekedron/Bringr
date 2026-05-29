@@ -103,15 +103,15 @@ enum KeyboardNavKey: Equatable, Sendable {
 
     /// Map a macOS virtual key code to a navigation key, or `nil` for keys the menu ignores
     /// (which the monitor then passes through to the app underneath). Both the number row and
-    /// the keypad map to digits, and both Return and keypad Enter confirm, so the keyboard
-    /// layout the user actually has doesn't matter.
+    /// the keypad map to digits, and Return, keypad Enter, and Space all confirm (Bringr-93j.72
+    /// added Space), so the keyboard layout the user actually has doesn't matter.
     init?(keyCode: Int64) {
         switch keyCode {
         case 123: self = .arrow(.left)
         case 124: self = .arrow(.right)
         case 125: self = .arrow(.down)
         case 126: self = .arrow(.up)
-        case 36, 76: self = .confirm
+        case 36, 76, 49: self = .confirm
         case 53: self = .escape
         default:
             guard let digit = Self.digitsByKeyCode[keyCode] else { return nil }

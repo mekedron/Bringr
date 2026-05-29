@@ -85,6 +85,7 @@ final class KeyboardNavigationTests: XCTestCase {
     func testConfirmAndEscapeKeyCodes() {
         XCTAssertEqual(KeyboardNavKey(keyCode: 36), .confirm) // Return
         XCTAssertEqual(KeyboardNavKey(keyCode: 76), .confirm) // keypad Enter
+        XCTAssertEqual(KeyboardNavKey(keyCode: 49), .confirm) // Space (Bringr-93j.72)
         XCTAssertEqual(KeyboardNavKey(keyCode: 53), .escape)
     }
 
@@ -104,7 +105,7 @@ final class KeyboardNavigationTests: XCTestCase {
 
     func testUnmappedKeyCodeIsNil() {
         XCTAssertNil(KeyboardNavKey(keyCode: 0))   // 'a'
-        XCTAssertNil(KeyboardNavKey(keyCode: 49))  // space
+        XCTAssertNil(KeyboardNavKey(keyCode: 48))  // Tab
     }
 
     // MARK: - Wrapping math
