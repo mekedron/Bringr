@@ -105,33 +105,40 @@ final class RadialNavigatorTests: XCTestCase {
         XCTAssertEqual(fixture.navigator.hovered, .slice(level: 1, index: 0))
     }
 
-    // MARK: - AC1: hovering a window isolates it, hiding the app's other windows
+    // MARK: - AC1: hovering a window raises it for preview, leaving siblings on screen (Bringr-93j.83)
 
-    func testHoveringWindowIsolatesItAndHidesOtherWindowsOfTheApp() {
+    func testHoveringWindowRaisesItLeavingTheAppsOtherWindowsOnScreen() {
         let fixture = makeFixture()
         fixture.navigator.open(appNodes: fixture.appNodes)
         fixture.navigator.updateHover(.slice(level: 0, index: 0)) // Chrome → [Inbox, Docs]
 
-        fixture.navigator.updateHover(.slice(level: 1, index: 0)) // Inbox
+        fixture.navigator.updateHover(.slice(level: 1, index: 1)) // Docs
 
-        assertOnScreen(11, fixture.fake) // Inbox stays visible
-        assertParked(12, fixture.fake)   // Docs parked off-screen...
-        XCTAssertFalse(fixture.fake.isMinimized(WindowID(app: AppID(pid: 10), token: 12))) // ...not minimized
-        XCTAssertEqual(fixture.navigator.expandedWindowIndex, 0)
+        // Docs is raised to the front for preview; the default hide-others reveal no
+        // longer parks/minimizes the app's siblings at the window level (Bringr-93j.83).
+        XCTAssertEqual(fixture.fake.windows(of: AppID(pid: 10)).first,
+                       WindowID(app: AppID(pid: 10), token: 12))
+        assertOnScreen(11, fixture.fake) // Inbox stays on screen, not parked...
+        assertOnScreen(12, fixture.fake)
+        XCTAssertFalse(fixture.fake.isMinimized(WindowID(app: AppID(pid: 10), token: 11))) // ...nor minimized
+        XCTAssertEqual(fixture.navigator.expandedWindowIndex, 1)
     }
 
-    // MARK: - AC2: moving between window slices re-isolates the new target
+    // MARK: - AC2: moving between window slices raises the new target
 
-    func testMovingBetweenWindowSlicesReIsolatesNewTarget() {
+    func testMovingBetweenWindowSlicesRaisesNewTarget() {
         let fixture = makeFixture()
         fixture.navigator.open(appNodes: fixture.appNodes)
         fixture.navigator.updateHover(.slice(level: 0, index: 0)) // Chrome
-        fixture.navigator.updateHover(.slice(level: 1, index: 0)) // Inbox isolated
+        fixture.navigator.updateHover(.slice(level: 1, index: 0)) // Inbox raised
 
         fixture.navigator.updateHover(.slice(level: 1, index: 1)) // Docs
 
-        assertParked(11, fixture.fake)   // Inbox now parked off-screen
-        assertOnScreen(12, fixture.fake) // Docs now stays visible
+        // Docs is now front; both windows remain on screen (nothing parked).
+        XCTAssertEqual(fixture.fake.windows(of: AppID(pid: 10)).first,
+                       WindowID(app: AppID(pid: 10), token: 12))
+        assertOnScreen(11, fixture.fake)
+        assertOnScreen(12, fixture.fake)
         XCTAssertEqual(fixture.navigator.expandedWindowIndex, 1)
     }
 
@@ -159,11 +166,13 @@ final class RadialNavigatorTests: XCTestCase {
         let fixture = makeFixture()
         fixture.navigator.open(appNodes: fixture.appNodes)
         fixture.navigator.updateHover(.slice(level: 0, index: 0))
-        fixture.navigator.updateHover(.slice(level: 1, index: 1)) // Docs isolated
+        fixture.navigator.updateHover(.slice(level: 1, index: 1)) // Docs raised
         fixture.navigator.updateHover(.slice(level: 1, index: 1)) // again
 
         XCTAssertEqual(fixture.navigator.expandedWindowIndex, 1)
-        assertParked(11, fixture.fake)
+        XCTAssertEqual(fixture.fake.windows(of: AppID(pid: 10)).first,
+                       WindowID(app: AppID(pid: 10), token: 12)) // Docs still front
+        assertOnScreen(11, fixture.fake)
         assertOnScreen(12, fixture.fake)
     }
 
@@ -324,14 +333,8 @@ final class RadialNavigatorTests: XCTestCase {
         FakeWindowSystem.WindowState(id: WindowID(app: AppID(pid: pid), token: token), minimized: false)
     }
 
-    /// The window-level hide-others reveal parks siblings off-screen instead of
-    /// minimizing them (Bringr-93j.24); every window here belongs to Chrome (pid 10).
-    private func assertParked(_ token: Int, _ fake: FakeWindowSystem, line: UInt = #line) {
-        XCTAssertEqual(fake.position(of: WindowID(app: AppID(pid: 10), token: token)),
-                       WindowController.offScreenPoint,
-                       "window \(token) should be parked off-screen", line: line)
-    }
-
+    /// Every window here belongs to Chrome (pid 10); a window is on-screen unless it was
+    /// parked at the off-screen sentinel (which no reveal now does at the window level).
     private func assertOnScreen(_ token: Int, _ fake: FakeWindowSystem, line: UInt = #line) {
         XCTAssertNotEqual(fake.position(of: WindowID(app: AppID(pid: 10), token: token)),
                           WindowController.offScreenPoint,

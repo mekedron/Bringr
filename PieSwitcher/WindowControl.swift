@@ -199,11 +199,15 @@ final class WindowController {
     }
 
     /// Isolate `target` against its app's other windows (window-hover, US-011) using
-    /// the active strategy.
+    /// the active strategy. Hide-others isolates only at the *app* level (the other
+    /// apps are already hidden by `revealApp`); at the window level it just raises the
+    /// hovered window for preview and leaves the app's siblings on screen, like
+    /// raise-to-front. Parking siblings off-screen height-clamped them (Bringr-93j.81/
+    /// .28/.32) and minimize was slow (Bringr-93j.24), for no benefit once the other
+    /// apps are gone — so hide-others no longer touches sibling windows (Bringr-93j.83).
     func revealWindow(_ target: WindowID) {
         switch strategy {
-        case .hideOthers: hideOtherWindows(besides: target)
-        case .raiseToFront: raiseWindowToFront(target)
+        case .hideOthers, .raiseToFront: raiseWindowToFront(target)
         case .dimOthers: dimWindow(target)
         }
     }

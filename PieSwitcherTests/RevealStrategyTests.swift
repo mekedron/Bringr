@@ -131,9 +131,13 @@ final class RevealStrategyTests: XCTestCase {
         XCTAssertEqual(fake.focusedWindow, w11)
     }
 
-    // MARK: - hide-others restores the exact window frame (Bringr-93j.28)
+    // MARK: - hide-others at the window level just raises for preview (Bringr-93j.83)
 
-    func testHideOthersRestoresAParkedWindowToItsOriginalSize() {
+    func testHideOthersRevealWindowRaisesTargetAndLeavesSiblingsInPlace() {
+        // Hide-others isolates other *apps* (via revealApp), but a window hover must NOT
+        // park/hide/minimize the app's siblings — it only raises the hovered window for
+        // preview. That sidesteps the off-screen park's per-hover height clamp entirely
+        // (Bringr-93j.81/.28/.32) and the minimize slowness (Bringr-93j.24).
         let appA = AppID(pid: 1)
         let (target, sibling) = (WindowID(app: appA, token: 11), WindowID(app: appA, token: 10))
         let fake = sizedApp(1, [
@@ -143,34 +147,34 @@ final class RevealStrategyTests: XCTestCase {
         let controller = WindowController(system: fake) // default hide-others
 
         controller.revealWindow(target)
-        XCTAssertEqual(fake.position(of: sibling), WindowController.offScreenPoint)
-        // macOS shrinks a window's HEIGHT when it is parked off the bottom of every
-        // screen (the title-bar constraint), so the model is clamped to mimic that.
-        fake.setSize(sibling, CGSize(width: 1600, height: 1040))
+
+        XCTAssertEqual(fake.windows(of: appA).first, target, "the hovered window is raised to the front")
+        XCTAssertEqual(fake.position(of: sibling), CGPoint(x: 100, y: 100),
+                       "the sibling stays in place — it is not parked off-screen")
+        XCTAssertEqual(fake.size(of: sibling), CGSize(width: 1600, height: 2000),
+                       "nor resized, so the off-screen height clamp can never happen")
+        XCTAssertFalse(fake.isMinimized(sibling), "nor minimized")
 
         controller.restore()
-
-        XCTAssertEqual(fake.position(of: sibling), CGPoint(x: 100, y: 100))
-        XCTAssertEqual(fake.size(of: sibling), CGSize(width: 1600, height: 2000),
-                       "the parked window returns to its exact original size, not the clamped height")
+        XCTAssertEqual(fake.windows(of: appA), [sibling, target], "restore returns the original order")
     }
 
-    func testHideOthersReTargetRestoresThePreviouslyParkedWindowSize() {
+    func testHideOthersRevealWindowReTargetRaisesNewTargetLeavingSiblings() {
         let appA = AppID(pid: 1)
         let (w10, w11) = (WindowID(app: appA, token: 10), WindowID(app: appA, token: 11))
         let fake = sizedApp(1, [
             10: CGRect(x: 100, y: 100, width: 1600, height: 2000),
             11: CGRect(x: 200, y: 200, width: 800, height: 600)
         ])
-        let controller = WindowController(system: fake)
+        let controller = WindowController(system: fake) // default hide-others
 
-        controller.revealWindow(w11)                          // w10 parked off-screen
-        fake.setSize(w10, CGSize(width: 1600, height: 1040))  // OS clamps the parked height
-        controller.revealWindow(w10)                          // re-target un-parks w10
+        controller.revealWindow(w11)
+        controller.revealWindow(w10) // re-target: raise the new hover; siblings stay put
 
-        XCTAssertEqual(fake.position(of: w10), CGPoint(x: 100, y: 100))
-        XCTAssertEqual(fake.size(of: w10), CGSize(width: 1600, height: 2000),
-                       "the re-targeted window recovers its original size when un-parked")
+        XCTAssertEqual(fake.windows(of: appA).first, w10, "re-targeting raises the newly hovered window")
+        XCTAssertEqual(fake.position(of: w11), CGPoint(x: 200, y: 200),
+                       "the previously previewed window stays in place — nothing was ever parked")
+        XCTAssertEqual(fake.size(of: w11), CGSize(width: 800, height: 600))
     }
 
     // MARK: - AC2/AC3: dim-others at both levels
