@@ -144,3 +144,47 @@ final class MouseChordTests: XCTestCase {
         MouseButtonEvent(button: button, phase: .up, timestamp: timestamp)
     }
 }
+
+/// Covers the persisted left+right-click trigger toggle (Bringr-93j.67): its ON default,
+/// the stable key, and the "stored false vs absent key" distinction that keeps the
+/// default ON. The chord is now independent of the modifier-hold trigger, so toggling it
+/// off must not touch the modifier path (verified in `ModifierActivationTests`).
+final class MouseChordActivationTests: XCTestCase {
+
+    func testDefaultIsEnabled() {
+        XCTAssertTrue(MouseChordActivation.default)
+    }
+
+    func testDefaultsKeyIsStable() {
+        XCTAssertEqual(MouseChordActivation.defaultsKey, "activation.mouse.leftRightClick")
+    }
+
+    func testEnabledByDefaultWhenUnset() {
+        // A fresh install summons with the click combo (US-007), so an absent key reads ON.
+        XCTAssertTrue(MouseChordActivation.isEnabled(from: makeDefaults()))
+    }
+
+    func testStoredValueRoundTrips() {
+        for value in [true, false] {
+            let defaults = makeDefaults()
+            defaults.set(value, forKey: MouseChordActivation.defaultsKey)
+            XCTAssertEqual(MouseChordActivation.isEnabled(from: defaults), value)
+        }
+    }
+
+    func testStoredFalseStaysOffAndIsNotTheDefault() {
+        // Storing false means "the user turned the click combo off" — it must NOT fall back
+        // to the ON default the way an absent key does.
+        let defaults = makeDefaults()
+        defaults.set(false, forKey: MouseChordActivation.defaultsKey)
+        XCTAssertFalse(MouseChordActivation.isEnabled(from: defaults))
+    }
+
+    private func makeDefaults() -> UserDefaults {
+        let suiteName = "MouseChordActivationTests.\(UUID().uuidString)"
+        guard let defaults = UserDefaults(suiteName: suiteName) else {
+            fatalError("could not create a test UserDefaults suite")
+        }
+        return defaults
+    }
+}

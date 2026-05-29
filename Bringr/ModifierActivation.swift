@@ -58,40 +58,28 @@ struct ModifierCombination: OptionSet, Hashable, Sendable {
     }
 }
 
-// MARK: - Mouse activation method
+// MARK: - Mouse left+right-click trigger
 
-/// How the mouse summons the menu (Bringr-93j.35): either a held modifier combination
-/// or the simultaneous left+right click (US-007). Persisted and read fresh, mirroring
-/// the other settings enums, so a Preferences change applies without a relaunch.
-enum MouseActivationMethod: String, CaseIterable, Sendable {
-    /// Press the left and right buttons together — the original v1 mouse trigger.
-    case leftRightClick
-    /// Hold the configured modifier combination, like the trackpad.
-    case modifierKeys
+/// Whether the simultaneous left+right mouse click summons the menu (US-007). This is one
+/// of the mouse's two independent triggers — the other being a held modifier combination
+/// (`ModifierActivation.mouse`) — so either, both, or neither can be on at once (Bringr-93j.67).
+/// A caseless namespace for the read helper, mirroring `HideOnCommit`/`CursorLock`; read
+/// fresh by `MouseChordMonitor` on every event so a Preferences change applies with no relaunch.
+enum MouseChordActivation {
+    /// `UserDefaults` key backing the toggle. Single source of truth shared by the
+    /// Preferences `@AppStorage` and `isEnabled(from:)` so the two cannot drift.
+    static let defaultsKey = "activation.mouse.leftRightClick"
 
-    /// Left+right click is the default: it preserves the working v1 trigger and summons
-    /// out of the box, whereas the default mouse modifier set is empty (nothing to hold).
-    static let `default`: MouseActivationMethod = .leftRightClick
+    /// Default: ON. Left+right click is the out-of-the-box v1 mouse trigger, so a fresh
+    /// install summons with it (matching the pre-Bringr-93j.67 default mouse method).
+    static let `default` = true
 
-    /// `UserDefaults` key backing the persisted choice. Single source of truth shared by
-    /// the Preferences `@AppStorage` and `current(from:)` so they cannot drift.
-    static let defaultsKey = "activation.mouse.method"
-
-    /// Human-readable name for the Preferences picker.
-    var displayName: String {
-        switch self {
-        case .leftRightClick: return "Left + right click together"
-        case .modifierKeys: return "Hold modifier keys"
-        }
-    }
-
-    /// The persisted method, falling back to `.default` when unset or unrecognized.
-    static func current(from defaults: UserDefaults = .standard) -> MouseActivationMethod {
-        guard let raw = defaults.string(forKey: defaultsKey),
-              let method = MouseActivationMethod(rawValue: raw) else {
-            return .default
-        }
-        return method
+    /// Whether the left+right chord is an active mouse trigger. Because the default is ON,
+    /// the unset case is checked explicitly — `bool(forKey:)` alone returns `false` for an
+    /// absent key, which would silently flip the default (mirroring `CuratedApps`).
+    static func isEnabled(from defaults: UserDefaults = .standard) -> Bool {
+        guard defaults.object(forKey: defaultsKey) != nil else { return `default` }
+        return defaults.bool(forKey: defaultsKey)
     }
 }
 
@@ -107,7 +95,8 @@ enum ModifierActivation {
 
     /// The trackpad defaults to Fn: holding Fn summons the menu with no trackpad gesture.
     static let trackpadDefault: ModifierCombination = .function
-    /// The mouse defaults to no modifiers (its default method is left+right click).
+    /// The mouse defaults to no modifiers — out of the box it summons with left+right
+    /// click (`MouseChordActivation.default`), so no modifier path needs to be armed.
     static let mouseDefault: ModifierCombination = []
 
     static func trackpad(from defaults: UserDefaults = .standard) -> ModifierCombination {
@@ -130,18 +119,17 @@ enum ModifierActivation {
         return ModifierCombination(rawValue: raw).intersection(.all)
     }
 
-    /// Every combination that should summon the menu right now: the trackpad's (always,
-    /// since the trackpad only offers modifier activation) plus the mouse's when its
-    /// method is set to modifier keys. Empty combinations are dropped, so unchecking
-    /// every key disables that path rather than arming "no modifiers".
+    /// Every modifier combination that should summon the menu right now: the trackpad's
+    /// and the mouse's. Each is included only when non-empty, so unchecking every key
+    /// disables that path rather than arming "no modifiers". Both are independent of the
+    /// mouse's left+right-click trigger (see `MouseChordActivation`), which is not a
+    /// modifier combination and so is not represented here.
     static func armedCombinations(from defaults: UserDefaults = .standard) -> [ModifierCombination] {
         var armed: [ModifierCombination] = []
         let trackpad = trackpad(from: defaults)
         if !trackpad.isEmpty { armed.append(trackpad) }
-        if MouseActivationMethod.current(from: defaults) == .modifierKeys {
-            let mouse = mouse(from: defaults)
-            if !mouse.isEmpty { armed.append(mouse) }
-        }
+        let mouse = mouse(from: defaults)
+        if !mouse.isEmpty { armed.append(mouse) }
         return armed
     }
 }

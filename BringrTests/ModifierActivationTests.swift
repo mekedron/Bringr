@@ -33,37 +33,6 @@ final class ModifierActivationTests: XCTestCase {
         XCTAssertTrue(ModifierCombination(cgFlags: []).isEmpty)
     }
 
-    // MARK: - Mouse activation method (persistence)
-
-    func testMouseMethodDefaultIsLeftRightClick() {
-        XCTAssertEqual(MouseActivationMethod.default, .leftRightClick)
-    }
-
-    func testMouseMethodDefaultsKeyIsStable() {
-        XCTAssertEqual(MouseActivationMethod.defaultsKey, "activation.mouse.method")
-    }
-
-    func testMouseMethodCurrentReadsEveryValue() {
-        for method in MouseActivationMethod.allCases {
-            let defaults = makeDefaults()
-            defaults.set(method.rawValue, forKey: MouseActivationMethod.defaultsKey)
-            XCTAssertEqual(MouseActivationMethod.current(from: defaults), method)
-        }
-    }
-
-    func testMouseMethodFallsBackWhenUnsetOrUnrecognized() {
-        XCTAssertEqual(MouseActivationMethod.current(from: makeDefaults()), .default)
-        let defaults = makeDefaults()
-        defaults.set("not-a-method", forKey: MouseActivationMethod.defaultsKey)
-        XCTAssertEqual(MouseActivationMethod.current(from: defaults), .default)
-    }
-
-    func testMouseMethodDisplayNamesAreDistinctAndNonEmpty() {
-        let names = MouseActivationMethod.allCases.map(\.displayName)
-        XCTAssertFalse(names.contains(where: \.isEmpty))
-        XCTAssertEqual(Set(names).count, names.count)
-    }
-
     // MARK: - Persisted combinations (defaults & the "cleared vs unset" distinction)
 
     func testTrackpadDefaultsToFnWhenUnset() {
@@ -103,30 +72,24 @@ final class ModifierActivationTests: XCTestCase {
         XCTAssertEqual(ModifierActivation.armedCombinations(from: makeDefaults()), [.function])
     }
 
-    func testMouseModifiersArmedOnlyWhenMethodIsModifierKeys() {
+    func testMouseModifiersArmedWheneverNonEmpty() {
+        // The mouse modifier hold is now independent of the left+right click trigger
+        // (Bringr-93j.67): selecting any key arms it, with no "method" gate to flip.
         let defaults = makeDefaults()
         defaults.set(ModifierCombination.command.rawValue, forKey: ModifierActivation.mouseDefaultsKey)
-
-        // Method still left+right click → the mouse combo is not armed.
-        XCTAssertEqual(ModifierActivation.armedCombinations(from: defaults), [.function])
-
-        // Switch the method → the mouse combo joins the trackpad's.
-        defaults.set(MouseActivationMethod.modifierKeys.rawValue, forKey: MouseActivationMethod.defaultsKey)
         XCTAssertEqual(Set(ModifierActivation.armedCombinations(from: defaults)), [.function, .command])
     }
 
     func testClearedTrackpadDropsOutOfArmedSet() {
         let defaults = makeDefaults()
         defaults.set(0, forKey: ModifierActivation.trackpadDefaultsKey)
-        defaults.set(MouseActivationMethod.modifierKeys.rawValue, forKey: MouseActivationMethod.defaultsKey)
         defaults.set(ModifierCombination.option.rawValue, forKey: ModifierActivation.mouseDefaultsKey)
         XCTAssertEqual(ModifierActivation.armedCombinations(from: defaults), [.option])
     }
 
-    func testEmptyMouseSetIsNotArmedEvenInModifierMode() {
+    func testEmptyMouseSetIsNotArmed() {
         let defaults = makeDefaults()
         defaults.set(0, forKey: ModifierActivation.trackpadDefaultsKey)
-        defaults.set(MouseActivationMethod.modifierKeys.rawValue, forKey: MouseActivationMethod.defaultsKey)
         // Mouse modifiers never set → empty → nothing armed at all.
         XCTAssertTrue(ModifierActivation.armedCombinations(from: defaults).isEmpty)
     }

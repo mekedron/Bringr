@@ -10,10 +10,12 @@ struct PreferencesView: View {
     /// fresh at each summon, so a change here applies on the next open without a relaunch.
     @AppStorage(CuratedApps.showOtherRunningAppsDefaultsKey)
     private var showsOtherRunningApps = CuratedApps.showOtherRunningAppsDefault
-    /// How the mouse and trackpad summon the menu (Bringr-93j.35). The same keys are read
-    /// fresh by the activation monitors, so a change here takes effect with no relaunch.
-    @AppStorage(MouseActivationMethod.defaultsKey)
-    private var mouseMethodRaw = MouseActivationMethod.default.rawValue
+    /// How the mouse and trackpad summon the menu (Bringr-93j.35, Bringr-93j.67). The same
+    /// keys are read fresh by the activation monitors, so a change here takes effect with no
+    /// relaunch. The mouse's two triggers — left+right click and a held modifier combination —
+    /// are independent toggles, so either, both, or neither can be on at once.
+    @AppStorage(MouseChordActivation.defaultsKey)
+    private var mouseChordEnabled = MouseChordActivation.default
     @AppStorage(ModifierActivation.mouseDefaultsKey)
     private var mouseModifiersRaw = ModifierActivation.mouseDefault.rawValue
     @AppStorage(ModifierActivation.trackpadDefaultsKey)
@@ -78,39 +80,38 @@ struct PreferencesView: View {
     }
 
     private var mouseSection: some View {
-        let method = MouseActivationMethod(rawValue: mouseMethodRaw) ?? .default
-        return VStack(alignment: .leading, spacing: 10) {
-            Picker("Activate with:", selection: $mouseMethodRaw) {
-                ForEach(MouseActivationMethod.allCases, id: \.rawValue) { method in
-                    Text(method.displayName).tag(method.rawValue)
-                }
+        let combo = ModifierCombination(rawValue: mouseModifiersRaw).intersection(.all)
+        return VStack(alignment: .leading, spacing: 12) {
+            // Two independent triggers (Bringr-93j.67): the click combo and the modifier
+            // hold can each be on or off, so the wheel summons on whichever is active.
+            Toggle("Left and right click together", isOn: $mouseChordEnabled)
+
+            VStack(alignment: .leading, spacing: 10) {
+                Text("Hold modifier keys")
+                ModifierKeysPicker(rawValue: $mouseModifiersRaw)
+                ModifierHoldDelayPicker()
             }
-            .pickerStyle(.radioGroup)
 
-            ModifierKeysPicker(rawValue: $mouseModifiersRaw)
-                .disabled(method != .modifierKeys)
-                .opacity(method == .modifierKeys ? 1 : 0.4)
-
-            ModifierHoldDelayPicker()
-                .disabled(method != .modifierKeys)
-                .opacity(method == .modifierKeys ? 1 : 0.4)
-
-            Text(mouseHelp(method: method))
+            Text(mouseHelp(chordEnabled: mouseChordEnabled, modifiers: combo))
                 .font(.callout)
                 .foregroundStyle(.secondary)
                 .fixedSize(horizontal: false, vertical: true)
         }
     }
 
-    private func mouseHelp(method: MouseActivationMethod) -> String {
-        switch method {
-        case .leftRightClick:
+    /// Describes whichever of the mouse's two independent triggers are on (Bringr-93j.67),
+    /// so the caption always reflects the live combination — click only, modifiers only,
+    /// both, or (the one dead end worth calling out) neither.
+    private func mouseHelp(chordEnabled: Bool, modifiers: ModifierCombination) -> String {
+        switch (chordEnabled, modifiers.isEmpty) {
+        case (true, true):
             return "Press the left and right mouse buttons together to summon the wheel."
-        case .modifierKeys:
-            let combo = ModifierCombination(rawValue: mouseModifiersRaw).intersection(.all)
-            return combo.isEmpty
-                ? "Pick one or more modifier keys to hold. Until then, the mouse can't summon the wheel."
-                : "Hold \(combo.names) to summon the wheel, then release to choose."
+        case (false, false):
+            return "Hold \(modifiers.names) to summon the wheel, then release to choose."
+        case (true, false):
+            return "Press the left and right buttons together, or hold \(modifiers.names), to summon the wheel."
+        case (false, true):
+            return "No mouse trigger is on. Turn on the click combo, or pick modifier keys to hold."
         }
     }
 
