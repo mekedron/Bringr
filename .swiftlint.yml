@@ -1,9 +1,9 @@
-# SwiftLint configuration for Bringr.
+# SwiftLint configuration for PieSwitcher.
 # Quality gate: `swiftlint lint --strict` must report zero violations.
 
 included:
-  - Bringr
-  - BringrTests
+  - PieSwitcher
+  - PieSwitcherTests
 
 excluded:
   - build

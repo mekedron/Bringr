@@ -1,6 +1,6 @@
-# Bringr
+# PieSwitcher
 
-A focused radial / pie-menu window switcher for macOS. Bringr lives in the
+A focused radial / pie-menu window switcher for macOS. PieSwitcher lives in the
 menu bar (no Dock icon, no main window) and does one thing well:
 
 **Switch fast between multiple windows of the same app, without touching the keyboard.**
@@ -16,7 +16,7 @@ There are already plenty of radial launchers on macOS — Launchy, Pieoneer,
 OrbitRing, Kando, DockDoor, and so on. They all try to do *everything*: open
 files, fire URLs, run scripts, switch windows, paste snippets, control music.
 That's fine, but for me it dilutes the one thing I actually want from this kind
-of tool. Bringr's first and only job is same-app window switching. Files,
+of tool. PieSwitcher's first and only job is same-app window switching. Files,
 folders, URLs, custom commands — maybe later (see [Out of scope](#out-of-scope)).
 
 ## The core interaction
@@ -32,12 +32,12 @@ folders, URLs, custom commands — maybe later (see [Out of scope](#out-of-scope
 5. **Commit** — that window comes forward, its app activates, focus follows, and
    every app/window that was pushed aside is restored to exactly where it was.
 
-Bringr remembers which window you picked for each app and pre-highlights it the
+PieSwitcher remembers which window you picked for each app and pre-highlights it the
 next time you open that app's sub-wheel.
 
 Backing out is always safe: Esc, clicking the centre dead zone, clicking
 outside, or releasing the trigger off any slice all cancel cleanly and restore
-your windows. If Bringr is ever force-quit mid-reveal, it restores any stranded
+your windows. If PieSwitcher is ever force-quit mid-reveal, it restores any stranded
 window the next time it launches.
 
 > **v1 note:** window slices show a number and title, not a captured thumbnail.
@@ -45,7 +45,7 @@ window the next time it launches.
 
 ## Summoning the wheel
 
-Bringr offers two global triggers, both configurable in Preferences:
+PieSwitcher offers two global triggers, both configurable in Preferences:
 
 - **Mouse** — *Left + right click together* (the default). Normal single clicks
   pass through untouched.
@@ -72,7 +72,7 @@ and takes effect on the **next summon** — no relaunch needed.
 | **Permissions** | Accessibility status, with **Open System Settings** and **Re-check** actions. |
 | **Mouse** | *Left + right click together* to summon. |
 | **Keyboard** | The modifier combination to hold (default **Fn**), with a Fn / Control / Option / Shift / Command picker and a hold delay. The only way to summon on a laptop without an external mouse. |
-| **Startup** | Launch Bringr at login. |
+| **Startup** | Launch PieSwitcher at login. |
 | **Interaction** | *Hold to select* (default) vs *Click to stay open*. |
 | **Reveal** | How other apps/windows get out of the way (see [below](#reveal)). |
 | **Sorting** | Apps: *Recently used (⌘-Tab order)* (default) or *By name*. Windows: *Recently used* (default) or *Fixed position*. |
@@ -93,11 +93,11 @@ windows:
 
 ## Permissions
 
-Bringr needs **Accessibility** access to enumerate windows, switch between them,
+PieSwitcher needs **Accessibility** access to enumerate windows, switch between them,
 and observe its global activation triggers. On first launch it detects the
 current state and, if access is missing, points you to the right System Settings
 pane. Until access is granted the activation triggers are inert (the app never
-crashes), and Bringr picks up the change automatically once you grant it — no
+crashes), and PieSwitcher picks up the change automatically once you grant it — no
 relaunch required.
 
 ## Requirements
@@ -107,7 +107,7 @@ relaunch required.
 
 ## Out of scope
 
-Bringr v1 is deliberately narrow. The following are explicitly **not** part of
+PieSwitcher v1 is deliberately narrow. The following are explicitly **not** part of
 v1 (the architecture leaves room for them, but none ship today):
 
 - Live / captured window-preview thumbnails (needs Screen Recording permission)
@@ -124,19 +124,19 @@ v1 (the architecture leaves room for them, but none ship today):
 - SwiftUI for the menu bar, About, and Preferences windows; AppKit / Core
   Graphics / Accessibility (AXUIElement) for the overlay, window enumeration,
   control, and global event taps
-- Xcode project — open `Bringr.xcodeproj` and press ⌘R
+- Xcode project — open `PieSwitcher.xcodeproj` and press ⌘R
 
 ## Building & running
 
 ```sh
 # Build — must end in "** BUILD SUCCEEDED **"
-xcodebuild -project Bringr.xcodeproj -scheme Bringr -configuration Debug -derivedDataPath build build
+xcodebuild -project PieSwitcher.xcodeproj -scheme PieSwitcher -configuration Debug -derivedDataPath build build
 
 # Run (always pkill first so the fresh build launches, not a stale instance)
-pkill -x Bringr 2>/dev/null; open build/Build/Products/Debug/Bringr.app
+pkill -x PieSwitcher 2>/dev/null; open build/Build/Products/Debug/PieSwitcher.app
 ```
 
-Or just open the project in Xcode and press ⌘R. Bringr has no Dock icon — look
+Or just open the project in Xcode and press ⌘R. PieSwitcher has no Dock icon — look
 for the hexagon-grid icon in the menu bar.
 
 ## Quality gates
@@ -145,19 +145,19 @@ All three commands must pass before any change is considered done:
 
 ```sh
 # 1. Compile — must end in "** BUILD SUCCEEDED **"
-xcodebuild -project Bringr.xcodeproj -scheme Bringr -configuration Debug -derivedDataPath build build
+xcodebuild -project PieSwitcher.xcodeproj -scheme PieSwitcher -configuration Debug -derivedDataPath build build
 
 # 2. Lint — must report zero violations (warnings fail under --strict)
 swiftlint lint --strict
 
 # 3. Test — all XCTest cases must pass
-xcodebuild test -project Bringr.xcodeproj -scheme Bringr -destination 'platform=macOS'
+xcodebuild test -project PieSwitcher.xcodeproj -scheme PieSwitcher -destination 'platform=macOS'
 ```
 
 SwiftLint is a separate binary; install it with `brew install swiftlint`. Its
 rules live in [`.swiftlint.yml`](.swiftlint.yml). Unit tests live in the
-`BringrTests` target (a host-based bundle loaded into `Bringr.app`).
+`PieSwitcherTests` target (a host-based bundle loaded into `PieSwitcher.app`).
 
 ## Repository
 
-<https://github.com/mekedron/Bringr>
+<https://github.com/mekedron/PieSwitcher>

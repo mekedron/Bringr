@@ -1,7 +1,7 @@
-# PRD: Radial Window Switcher (Bringr v1)
+# PRD: Radial Window Switcher (PieSwitcher v1)
 
 ## Overview
-Bringr's single job in v1 is to switch fast between multiple windows of the **same** app without touching the keyboard. The user summons a radial (pie) menu at the cursor; it shows the apps that currently have open windows; hovering an app reveals a sub-wheel of that app's windows; hovering a window isolates it on screen for visual confirmation; clicking brings it forward and focuses it. The whole flow stays in the wheel — no Cmd-Tab, Mission Control, or Dock guessing.
+PieSwitcher's single job in v1 is to switch fast between multiple windows of the **same** app without touching the keyboard. The user summons a radial (pie) menu at the cursor; it shows the apps that currently have open windows; hovering an app reveals a sub-wheel of that app's windows; hovering a window isolates it on screen for visual confirmation; clicking brings it forward and focuses it. The whole flow stays in the wheel — no Cmd-Tab, Mission Control, or Dock guessing.
 
 This document covers v1 only. URLs, files, folders, custom commands, real window previews, user-created menus, and animations are explicitly future work, but the architecture must not foreclose them.
 
@@ -10,19 +10,19 @@ This document covers v1 only. URLs, files, folders, custom commands, real window
 - Two activation methods work globally: simultaneous left+right mouse click, and three-finger trackpad press.
 - Hovering an app isolates that app's windows; hovering a window isolates that single window — via a user-chosen reveal strategy.
 - Selecting a window raises and focuses it, then fully restores the prior state of every other window/app.
-- Bringr remembers the last window chosen per app and pre-highlights it next time.
+- PieSwitcher remembers the last window chosen per app and pre-highlights it next time.
 - The menu is data-driven and nestable (no singletons), so future menus and deeper trees drop in without a rewrite.
 - No animations in v1.
 
 ## Quality Gates
 
 These commands must pass for every user story:
-- `xcodebuild -project Bringr.xcodeproj -scheme Bringr -configuration Debug -derivedDataPath build build` — must end in `** BUILD SUCCEEDED **`
+- `xcodebuild -project PieSwitcher.xcodeproj -scheme PieSwitcher -configuration Debug -derivedDataPath build build` — must end in `** BUILD SUCCEEDED **`
 - `swiftlint lint --strict` — zero violations
-- `xcodebuild test -project Bringr.xcodeproj -scheme Bringr -destination 'platform=macOS'` — all tests pass
+- `xcodebuild test -project PieSwitcher.xcodeproj -scheme PieSwitcher -destination 'platform=macOS'` — all tests pass
 
 For UI/interaction stories, also include:
-- Build and run the app (`pkill -x Bringr 2>/dev/null; open build/Build/Products/Debug/Bringr.app`) and verify the behavior visually, since native menu/overlay behavior cannot be fully unit-tested.
+- Build and run the app (`pkill -x PieSwitcher 2>/dev/null; open build/Build/Products/Debug/PieSwitcher.app`) and verify the behavior visually, since native menu/overlay behavior cannot be fully unit-tested.
 
 ## User Stories
 
@@ -30,14 +30,14 @@ For UI/interaction stories, also include:
 As a developer, I want SwiftLint and an XCTest target wired into the project so that the quality gates can run from story one.
 
 **Acceptance Criteria:**
-- [ ] A unit-test target is added to `Bringr.xcodeproj` and contains at least one passing sample test.
-- [ ] `xcodebuild test -project Bringr.xcodeproj -scheme Bringr -destination 'platform=macOS'` runs and passes.
+- [ ] A unit-test target is added to `PieSwitcher.xcodeproj` and contains at least one passing sample test.
+- [ ] `xcodebuild test -project PieSwitcher.xcodeproj -scheme PieSwitcher -destination 'platform=macOS'` runs and passes.
 - [ ] SwiftLint is integrated (build plugin or invoked binary) with a committed `.swiftlint.yml`.
 - [ ] `swiftlint lint --strict` runs clean against the current source.
 - [ ] The three quality-gate commands are documented in the README or CLAUDE.md.
 
 ### US-002: Accessibility permission bootstrap
-As a user, I want Bringr to detect and request Accessibility/Input-Monitoring permission so that it can enumerate and control windows and observe global input.
+As a user, I want PieSwitcher to detect and request Accessibility/Input-Monitoring permission so that it can enumerate and control windows and observe global input.
 
 **Acceptance Criteria:**
 - [ ] On launch, the app checks `AXIsProcessTrusted()` and reflects the current state.
@@ -52,7 +52,7 @@ As the menu, I want a service that reports which apps currently have on-screen w
 **Acceptance Criteria:**
 - [ ] Returns running apps that own at least one normal, on-screen window.
 - [ ] Returns per-app window list with a stable identifier, title, and owning app.
-- [ ] Excludes Bringr itself and apps with no normal windows (e.g. agents, menu-bar-only apps).
+- [ ] Excludes PieSwitcher itself and apps with no normal windows (e.g. agents, menu-bar-only apps).
 - [ ] Enumeration is invoked fresh on each summon and completes fast enough not to delay the menu (measure and record the timing).
 - [ ] Logic is covered by unit tests using injected fixtures (no live system dependency in tests).
 
@@ -136,7 +136,7 @@ As a user, I want hovering a window slice to leave only that window visible so t
 - [ ] v1 uses placeholder slice content (number/title), not a captured preview image.
 
 ### US-012: Select and commit — focus and remember
-As a user, I want clicking/releasing on a window to bring it forward and have Bringr remember my choice so that the next summon starts from where I left off.
+As a user, I want clicking/releasing on a window to bring it forward and have PieSwitcher remember my choice so that the next summon starts from where I left off.
 
 **Acceptance Criteria:**
 - [ ] Committing a window raises it, activates its app, and moves focus to it.
@@ -165,7 +165,7 @@ As a user, I want to customize the wheel's appearance so that it fits my taste a
 - [ ] Appearance changes are verified by build & run.
 
 ### US-015: Cancel and guaranteed state restoration
-As a user, I want every way of backing out to leave my windows exactly as they were so that Bringr never strands a hidden window.
+As a user, I want every way of backing out to leave my windows exactly as they were so that PieSwitcher never strands a hidden window.
 
 **Acceptance Criteria:**
 - [ ] Esc, click-outside, release-in-dead-zone, and trigger-loss all cancel cleanly.

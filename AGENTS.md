@@ -1,11 +1,11 @@
 # Instructions for AI agents
 
-Bringr is a status-bar-only macOS app (`LSUIElement = true`, no Dock icon, no main window). The only visible UI is the menu-bar icon and the About and Preferences windows opened from it.
+PieSwitcher is a status-bar-only macOS app (`LSUIElement = true`, no Dock icon, no main window). The only visible UI is the menu-bar icon and the About and Preferences windows opened from it.
 
 ## Build
 
 ```sh
-xcodebuild -project Bringr.xcodeproj -scheme Bringr -configuration Debug -derivedDataPath build build
+xcodebuild -project PieSwitcher.xcodeproj -scheme PieSwitcher -configuration Debug -derivedDataPath build build
 ```
 
 `** BUILD SUCCEEDED **` on the last line = it compiled.
@@ -13,7 +13,7 @@ xcodebuild -project Bringr.xcodeproj -scheme Bringr -configuration Debug -derive
 ## Run
 
 ```sh
-pkill -x Bringr 2>/dev/null; open build/Build/Products/Debug/Bringr.app
+pkill -x PieSwitcher 2>/dev/null; open build/Build/Products/Debug/PieSwitcher.app
 ```
 
 Always `pkill` first so the fresh build launches, not a stale instance.
@@ -21,18 +21,18 @@ Always `pkill` first so the fresh build launches, not a stale instance.
 ## Confirm it's running
 
 ```sh
-pgrep -x Bringr
+pgrep -x PieSwitcher
 ```
 
 PID on stdout = running. No output = it didn't launch — run the binary directly to see stderr:
 
 ```sh
-build/Build/Products/Debug/Bringr.app/Contents/MacOS/Bringr
+build/Build/Products/Debug/PieSwitcher.app/Contents/MacOS/PieSwitcher
 ```
 
 ## Clean up
 
-`pkill -x Bringr` before ending the session.
+`pkill -x PieSwitcher` before ending the session.
 
 
 ## Workflow
