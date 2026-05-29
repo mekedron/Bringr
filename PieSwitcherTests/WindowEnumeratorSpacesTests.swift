@@ -313,7 +313,7 @@ final class WindowEnumeratorCacheTests: XCTestCase {
         let enumerator = WindowEnumerator(source: source)
 
         // Apps-ring read (the recording read) starts the summon and fetches the broadened list.
-        let appsRing = enumerator.enumerate(allSpaces: true, recordingRecency: true)
+        let appsRing = enumerator.enumerate(allSpaces: true, freshSummon: true)
         // A hover sub-wheel re-read this summon — different broadening flag, served from the
         // same cached raw list, so the keep-rule differs but the source is not queried again.
         let subWheel = enumerator.enumerate(includeMinimized: true)
@@ -334,13 +334,13 @@ final class WindowEnumeratorCacheTests: XCTestCase {
         )
         let enumerator = WindowEnumerator(source: source)
 
-        _ = enumerator.enumerate(allSpaces: true, recordingRecency: true)
+        _ = enumerator.enumerate(allSpaces: true, freshSummon: true)
         _ = enumerator.enumerate(allSpaces: true) // hover re-read: cache hit
         XCTAssertEqual(source.broadenedCallCount, 1)
 
         // The next summon's recording read drops the prior snapshot and queries afresh, so a
         // window list that changed between summons is never served stale.
-        _ = enumerator.enumerate(allSpaces: true, recordingRecency: true)
+        _ = enumerator.enumerate(allSpaces: true, freshSummon: true)
         XCTAssertEqual(source.broadenedCallCount, 2)
     }
 
@@ -352,7 +352,7 @@ final class WindowEnumeratorCacheTests: XCTestCase {
         ])
         let enumerator = WindowEnumerator(source: source)
 
-        _ = enumerator.enumerate(recordingRecency: true)
+        _ = enumerator.enumerate(freshSummon: true)
         _ = enumerator.enumerate()
         _ = enumerator.enumerate()
 

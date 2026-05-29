@@ -55,10 +55,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     /// never allocates the window on the hot path (US-006 / FR-14). The v1 window
     /// switcher answers both activation triggers.
     private func prewarmRadialMenu() {
-        // Inject PieSwitcher's own recent-use tracker so the `.recentlyUsed` order is driven by
-        // a persisted MRU updated only at summon time, not the live z-order that previewing
-        // perturbs (Bringr-93j.46).
-        let enumerator = WindowEnumerator(recency: RecencyTracker())
+        let enumerator = WindowEnumerator()
         // The curated "My Apps" wheel (Bringr-93j.41); it falls through to the full
         // all-running-apps wheel when the user has curated nothing.
         let switcher = MyAppsMenu(enumerator: enumerator)

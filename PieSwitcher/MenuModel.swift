@@ -188,14 +188,14 @@ struct WindowSwitcherMenu: MenuDefinition {
             title: "Applications",
             action: .expand,
             children: .dynamic {
-                // The apps ring is the one summon-time read, resolved before any reveal,
-                // so it records the recent-use order (Bringr-93j.46); the per-app
-                // sub-wheels re-read on hover and must not (`recordingRecency` defaults off).
+                // The apps ring is the first read of a new summon, so it invalidates the
+                // prior summon's broadened raw cache (Bringr-93j.53); the per-app sub-wheels
+                // re-read on hover and share that fresh cache (`freshSummon` defaults off).
                 enumerator.enumerate(
                     onScreen: appsScope.screenBounds, allSpaces: appsScope.allSpaces,
                     includeMinimized: appsScope.includeMinimized, includeHidden: appsScope.includeHidden,
                     validatesOnscreen: appsScope.validatesOnscreen,
-                    recordingRecency: true
+                    freshSummon: true
                 ).map {
                     Self.appNode($0, windowsScope: windowsScope, enumerator: enumerator)
                 }

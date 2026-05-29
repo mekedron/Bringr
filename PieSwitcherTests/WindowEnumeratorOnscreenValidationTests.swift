@@ -88,7 +88,7 @@ final class WindowEnumeratorOnscreenValidationTests: XCTestCase {
         )
         let enumerator = WindowEnumerator(source: source)
 
-        let appsRing = enumerator.enumerate(allSpaces: true, validatesOnscreen: true, recordingRecency: true)
+        let appsRing = enumerator.enumerate(allSpaces: true, validatesOnscreen: true, freshSummon: true)
         let subWheel = enumerator.enumerate(allSpaces: true, validatesOnscreen: false)
 
         XCTAssertEqual(source.broadenedCallCount, 1)                       // reused, not re-queried
@@ -106,7 +106,7 @@ final class WindowEnumeratorOnscreenValidationTests: XCTestCase {
         )
         let enumerator = WindowEnumerator(source: source)
 
-        _ = enumerator.enumerate(allSpaces: true, validatesOnscreen: false, recordingRecency: true)
+        _ = enumerator.enumerate(allSpaces: true, validatesOnscreen: false, freshSummon: true)
         _ = enumerator.enumerate(allSpaces: true, validatesOnscreen: true)
         XCTAssertEqual(source.broadenedCallCount, 2)
     }

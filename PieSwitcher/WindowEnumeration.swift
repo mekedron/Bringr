@@ -53,12 +53,6 @@ final class WindowEnumerator {
     private let dockOrder: () -> [String]
     private let keepFinderLast: () -> Bool
     private let appBundleID: (pid_t) -> String?
-    /// PieSwitcher's own recent-use order (Bringr-93j.46). When present, the `.recentlyUsed`
-    /// sort is driven by this persisted MRU instead of the live z-order, so previewing —
-    /// which perturbs the live z-order — no longer reshuffles the order between summons.
-    /// `nil` (the default, and every test that doesn't inject one) keeps the original
-    /// live-z-order behavior, so this is purely additive.
-    private let recency: RecencyTracker?
     private let log = Logger(subsystem: "com.mekedron.PieSwitcher", category: "enumeration")
 
     /// Wall-clock duration of the most recent `enumerate()` call, recorded so the
@@ -72,8 +66,8 @@ final class WindowEnumerator {
     /// identical for every read in one summon (apps ring and each app's windows sub-wheel);
     /// only the per-read keep-rule and screen filter differ. Without this, the sub-wheel's
     /// dynamic provider re-ran that whole classify on *every* hover, which is what made
-    /// "Include minimized/hidden" lag by seconds. Dropped at the next summon's recording read
-    /// (`recordingRecency: true`, the one authoritative per-summon read), so it never goes
+    /// "Include minimized/hidden" lag by seconds. Dropped at the next summon's first read
+    /// (`freshSummon: true`, the one authoritative per-summon read), so it never goes
     /// stale across summons. `nil` on the narrow (default) path, which is never cached so its
     /// per-hover live re-read — and the Bringr-93j.31 sub-wheel retry that relies on it — is
     /// preserved exactly. Keyed by `validatingOnscreen` too (Bringr-93j.60): an all-screens
@@ -90,8 +84,7 @@ final class WindowEnumerator {
         keepFinderLast: @escaping () -> Bool = { DockOrder.keepsFinderLast() },
         appBundleID: @escaping (pid_t) -> String? = {
             NSRunningApplication(processIdentifier: $0)?.bundleIdentifier
-        },
-        recency: RecencyTracker? = nil
+        }
     ) {
         self.source = source ?? CGWindowSource()
         self.appOrder = appOrder
@@ -99,7 +92,6 @@ final class WindowEnumerator {
         self.dockOrder = dockOrder
         self.keepFinderLast = keepFinderLast
         self.appBundleID = appBundleID
-        self.recency = recency
     }
 
     /// Apps that currently own at least one normal, on-screen window, each with
@@ -120,12 +112,11 @@ final class WindowEnumerator {
     /// not asked for — so, e.g., turning on `allSpaces` alone no longer drags minimized
     /// windows along. Independent of `screenBounds`, which still filters geometrically after.
     ///
-    /// `recordingRecency` distinguishes the one authoritative summon-time read (the apps
-    /// ring) from the per-app sub-wheel re-reads that hover triggers (Bringr-93j.46). Only
-    /// the summon read folds the live order into `RecencyTracker`, because only it runs
-    /// *before* any reveal perturbs the z-order; the hover re-reads pass `false` so a
-    /// preview never updates the recent-use order. With no `RecencyTracker` injected this
-    /// flag is inert.
+    /// `freshSummon` marks the one authoritative read at the start of a summon (the apps
+    /// ring), distinguishing it from the per-app sub-wheel re-reads that hover triggers; it
+    /// invalidates the prior summon's broadened raw-window cache so a later broadened read of
+    /// this summon never sees stale windows (Bringr-93j.53). The hover re-reads pass `false`
+    /// to share the just-fetched broadened list.
     /// `validatesOnscreen` keeps an on-screen window only if it is a real, focusable window
     /// (Bringr-93j.60). Off (the default) trusts every on-screen record, the prior behaviour, so
     /// the hot default path is unchanged and existing callers/tests are unaffected. On — passed
@@ -139,14 +130,13 @@ final class WindowEnumerator {
         includeMinimized: Bool = false,
         includeHidden: Bool = false,
         validatesOnscreen: Bool = false,
-        recordingRecency: Bool = false
+        freshSummon: Bool = false
     ) -> [AppWindows] {
         let start = DispatchTime.now().uptimeNanoseconds
-        // The recording read is the one authoritative per-summon read (the apps ring), and it
-        // runs first, before any hover — so it marks a new summon: drop the prior summon's
-        // cached broadened list so a later broadened read this summon can't serve stale windows
-        // (Bringr-93j.53).
-        if recordingRecency { broadenedRawCache = nil }
+        // The summon-start read runs first, before any hover, so it marks a new summon: drop the
+        // prior summon's cached broadened list so a later broadened read this summon can't serve
+        // stale windows (Bringr-93j.53).
+        if freshSummon { broadenedRawCache = nil }
         // Any broadening flag needs the all-windows query (the only one that surfaces
         // off-Space / minimized / hidden windows); with none set, the cheap current-Space
         // query suffices and every record is already on-screen.
@@ -168,7 +158,6 @@ final class WindowEnumerator {
         }
         let onScreen = filter(collected, toScreen: screenBounds)
         let grouped = group(onScreen)
-        if recordingRecency { recency?.observe(grouped) }
         let result = sorted(grouped)
         let elapsed = TimeInterval(DispatchTime.now().uptimeNanoseconds - start) / 1_000_000_000
         lastDuration = elapsed
@@ -348,14 +337,16 @@ final class WindowEnumerator {
     /// positions stop reshuffling without any recency tracking of our own.
     private func sorted(_ apps: [AppWindows]) -> [AppWindows] {
         let windowsSorted = apps.map { app in
-            AppWindows(id: app.id, name: app.name, windows: sortWindows(app.windows, appName: app.name))
+            AppWindows(id: app.id, name: app.name, windows: sortWindows(app.windows))
         }
         switch appOrder() {
         case .recentlyUsed:
-            // Drive recent-use from PieSwitcher's own MRU when present, so previewing (which
-            // perturbs the live z-order) doesn't reshuffle it; fall back to the live
-            // front-to-back order when no tracker is injected (Bringr-93j.46).
-            return recency?.orderedApps(windowsSorted) ?? windowsSorted
+            // The live front-to-back order — the closest match to ⌘-Tab the public APIs expose
+            // without tracking activations ourselves (Bringr-93j.34/Bringr-93j.85). Preview can
+            // perturb the z-order during a session, but commit leaves that state intentionally
+            // (Bringr-93j.88) and cancel restores it, so the next summon's z-order reflects what
+            // the user actually used.
+            return windowsSorted
         case .name:
             return windowsSorted.sorted { lhs, rhs in
                 switch lhs.name.localizedCaseInsensitiveCompare(rhs.name) {
@@ -377,13 +368,14 @@ final class WindowEnumerator {
 
     /// Order one app's windows by the persisted window sort order. `.fixed` sorts by
     /// window number, which macOS assigns in creation order, so the oldest window keeps
-    /// the first spot summon to summon. `.recentlyUsed` uses PieSwitcher's own per-app window
-    /// MRU when present, so previewing windows doesn't reshuffle them, falling back to the
-    /// live front-to-back order otherwise (Bringr-93j.46).
-    private func sortWindows(_ windows: [WindowInfo], appName: String) -> [WindowInfo] {
+    /// the first spot summon to summon. `.recentlyUsed` keeps the live front-to-back order,
+    /// so the most recently raised window leads.
+    private func sortWindows(_ windows: [WindowInfo]) -> [WindowInfo] {
         switch windowOrder() {
         case .recentlyUsed:
-            return recency?.orderedWindows(forAppNamed: appName, windows) ?? windows
+            // Front-to-back live z-order — the app's most recently raised window leads. Same
+            // rationale as the app `.recentlyUsed` order above (Bringr-93j.85).
+            return windows
         case .fixed:
             return windows.sorted { $0.id.token < $1.id.token }
         }

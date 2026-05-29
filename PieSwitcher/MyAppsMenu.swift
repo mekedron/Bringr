@@ -116,13 +116,14 @@ struct MyAppsMenu: MenuDefinition {
             title: "Applications",
             action: .expand,
             children: .dynamic {
-                // The one summon-time read, before any reveal, so it records the
-                // recent-use order; hover sub-wheels re-read without recording (Bringr-93j.46).
+                // The first read of a new summon, so it invalidates the prior summon's
+                // broadened raw cache (Bringr-93j.53); the per-app sub-wheels re-read on
+                // hover and share that fresh cache.
                 let live = enumerator.enumerate(
                     onScreen: appsScope.screenBounds, allSpaces: appsScope.allSpaces,
                     includeMinimized: appsScope.includeMinimized, includeHidden: appsScope.includeHidden,
                     validatesOnscreen: appsScope.validatesOnscreen,
-                    recordingRecency: true
+                    freshSummon: true
                 )
                 // Keep the manual order (the default), or let the active Apps sort order
                 // reorder the curated block when the user turned that off (Bringr-93j.43).
