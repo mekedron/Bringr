@@ -21,6 +21,22 @@ final class KeyboardNavigationTests: XCTestCase {
         XCTAssertFalse(KeyboardNavigation.requiresConfirmation(from: defaults))
     }
 
+    func testCloseOnUnsupportedDefaultsOnAndCommitAppDefaultsOff() {
+        let defaults = makeDefaults()
+        XCTAssertTrue(KeyboardNavigation.closeOnUnsupportedDefault)
+        XCTAssertTrue(KeyboardNavigation.closesOnUnsupportedKey(from: defaults), "an absent key keeps it on")
+        XCTAssertFalse(KeyboardNavigation.commitAppWithoutWindowChoiceDefault)
+        XCTAssertFalse(KeyboardNavigation.commitsAppWithoutWindowChoice(from: defaults))
+    }
+
+    func testCloseOnUnsupportedAndCommitAppReadStoredValue() {
+        let defaults = makeDefaults()
+        defaults.set(false, forKey: KeyboardNavigation.closeOnUnsupportedKey)
+        defaults.set(true, forKey: KeyboardNavigation.commitAppWithoutWindowChoiceKey)
+        XCTAssertFalse(KeyboardNavigation.closesOnUnsupportedKey(from: defaults))
+        XCTAssertTrue(KeyboardNavigation.commitsAppWithoutWindowChoice(from: defaults))
+    }
+
     func testSubTogglesReadStoredValue() {
         let defaults = makeDefaults()
         defaults.set(false, forKey: KeyboardNavigation.arrowsKey)
@@ -36,6 +52,8 @@ final class KeyboardNavigationTests: XCTestCase {
         XCTAssertEqual(KeyboardNavigation.arrowsKey, "keyboardNav.arrows")
         XCTAssertEqual(KeyboardNavigation.numbersKey, "keyboardNav.numbers")
         XCTAssertEqual(KeyboardNavigation.confirmKey, "keyboardNav.requireConfirmation")
+        XCTAssertEqual(KeyboardNavigation.closeOnUnsupportedKey, "keyboardNav.closeOnUnsupportedKey")
+        XCTAssertEqual(KeyboardNavigation.commitAppWithoutWindowChoiceKey, "keyboardNav.commitAppWithoutWindowChoice")
     }
 
     // MARK: - Resolved config
@@ -73,6 +91,25 @@ final class KeyboardNavigationTests: XCTestCase {
         XCTAssertTrue(config.numbersEnabled, "arrow and number navigation are independent toggles")
     }
 
+    func testConfigCloseDefaultsOnAndCommitDefaultsOffWhenNavigationOn() {
+        let defaults = makeDefaults()
+        defaults.set(true, forKey: KeyboardNavigation.enabledKey)
+        let config = KeyboardNavigationConfig.current(from: defaults)
+        XCTAssertTrue(config.closesOnUnsupportedKey, "close-on-unsupported is on by default once nav is on")
+        XCTAssertFalse(config.commitsAppWithoutWindowChoice, "the no-window-choice commit is opt-in")
+    }
+
+    func testConfigGatesNewFlagsOnTopLevelSwitch() {
+        let defaults = makeDefaults()
+        // Even explicitly on, both gate behind the master switch so neither fires while it is off.
+        defaults.set(false, forKey: KeyboardNavigation.enabledKey)
+        defaults.set(true, forKey: KeyboardNavigation.closeOnUnsupportedKey)
+        defaults.set(true, forKey: KeyboardNavigation.commitAppWithoutWindowChoiceKey)
+        let config = KeyboardNavigationConfig.current(from: defaults)
+        XCTAssertFalse(config.closesOnUnsupportedKey)
+        XCTAssertFalse(config.commitsAppWithoutWindowChoice)
+    }
+
     // MARK: - Key-code mapping
 
     func testArrowKeyCodes() {
@@ -103,9 +140,11 @@ final class KeyboardNavigationTests: XCTestCase {
         }
     }
 
-    func testUnmappedKeyCodeIsNil() {
-        XCTAssertNil(KeyboardNavKey(keyCode: 0))   // 'a'
-        XCTAssertNil(KeyboardNavKey(keyCode: 48))  // Tab
+    func testUnmappedKeyCodeIsUnsupported() {
+        // No longer dropped (Bringr-93j.73): an unrecognised key is classified `.unsupported` so the
+        // close-on-unsupported policy can act on it; the monitor still passes it through when off.
+        XCTAssertEqual(KeyboardNavKey(keyCode: 0), .unsupported)   // 'a'
+        XCTAssertEqual(KeyboardNavKey(keyCode: 48), .unsupported)  // Tab
     }
 
     // MARK: - Wrapping math

@@ -21,11 +21,20 @@ enum KeyboardNavigation {
     /// Number mode "require Return to confirm" sub-toggle: a number only focuses/previews, then
     /// Return activates. Default OFF (numbers activate instantly).
     static let confirmKey = "keyboardNav.requireConfirmation"
+    /// "Close the wheel on any other key" sub-toggle (Bringr-93j.73): a key the wheel doesn't
+    /// navigate with closes it. Default ON, so an unrelated press dismisses rather than sticking.
+    static let closeOnUnsupportedKey = "keyboardNav.closeOnUnsupportedKey"
+    /// Number mode "don't require a window choice" sub-toggle (Bringr-93j.73): after a number
+    /// jumps to a multi-window app, releasing the trigger or confirming without picking a window
+    /// commits that app (and its active window) instead of reverting. Default OFF.
+    static let commitAppWithoutWindowChoiceKey = "keyboardNav.commitAppWithoutWindowChoice"
 
     static let enabledDefault = false
     static let arrowsDefault = true
     static let numbersDefault = true
     static let confirmDefault = false
+    static let closeOnUnsupportedDefault = true
+    static let commitAppWithoutWindowChoiceDefault = false
 
     static func isEnabled(from defaults: UserDefaults = .standard) -> Bool {
         defaults.bool(forKey: enabledKey)
@@ -41,6 +50,14 @@ enum KeyboardNavigation {
 
     static func requiresConfirmation(from defaults: UserDefaults = .standard) -> Bool {
         defaults.bool(forKey: confirmKey)
+    }
+
+    static func closesOnUnsupportedKey(from defaults: UserDefaults = .standard) -> Bool {
+        readTrueDefault(closeOnUnsupportedKey, from: defaults)
+    }
+
+    static func commitsAppWithoutWindowChoice(from defaults: UserDefaults = .standard) -> Bool {
+        defaults.bool(forKey: commitAppWithoutWindowChoiceKey)
     }
 
     /// A true-defaulted toggle: an absent key yields `true`, so the sub-options are on out of
@@ -59,9 +76,16 @@ struct KeyboardNavigationConfig: Equatable, Sendable {
     let arrowsEnabled: Bool
     let numbersEnabled: Bool
     let requiresConfirmation: Bool
+    /// Whether a key the wheel doesn't navigate with closes it (Bringr-93j.73), AND-ed with the
+    /// top-level switch so it never fires while the feature is off.
+    let closesOnUnsupportedKey: Bool
+    /// Whether a number-jumped multi-window app commits on release/confirm without a window pick
+    /// (Bringr-93j.73), AND-ed with the top-level switch.
+    let commitsAppWithoutWindowChoice: Bool
 
     static let disabled = KeyboardNavigationConfig(
-        isEnabled: false, arrowsEnabled: false, numbersEnabled: false, requiresConfirmation: false
+        isEnabled: false, arrowsEnabled: false, numbersEnabled: false, requiresConfirmation: false,
+        closesOnUnsupportedKey: false, commitsAppWithoutWindowChoice: false
     )
 
     static func current(from defaults: UserDefaults = .standard) -> KeyboardNavigationConfig {
@@ -70,7 +94,9 @@ struct KeyboardNavigationConfig: Equatable, Sendable {
             isEnabled: on,
             arrowsEnabled: on && KeyboardNavigation.arrowsEnabled(from: defaults),
             numbersEnabled: on && KeyboardNavigation.numbersEnabled(from: defaults),
-            requiresConfirmation: KeyboardNavigation.requiresConfirmation(from: defaults)
+            requiresConfirmation: KeyboardNavigation.requiresConfirmation(from: defaults),
+            closesOnUnsupportedKey: on && KeyboardNavigation.closesOnUnsupportedKey(from: defaults),
+            commitsAppWithoutWindowChoice: on && KeyboardNavigation.commitsAppWithoutWindowChoice(from: defaults)
         )
     }
 }
@@ -100,12 +126,16 @@ enum KeyboardNavKey: Equatable, Sendable {
     case digit(Int)
     case confirm
     case escape
+    /// Any key the wheel doesn't navigate with (a letter, Tab, an F-key …). The controller
+    /// either closes the wheel on it or passes it through, per the "close on unsupported key"
+    /// setting (Bringr-93j.73) — so the monitor always gets a key and the policy lives in one place.
+    case unsupported
 
-    /// Map a macOS virtual key code to a navigation key, or `nil` for keys the menu ignores
-    /// (which the monitor then passes through to the app underneath). Both the number row and
-    /// the keypad map to digits, and Return, keypad Enter, and Space all confirm (Bringr-93j.72
-    /// added Space), so the keyboard layout the user actually has doesn't matter.
-    init?(keyCode: Int64) {
+    /// Map a macOS virtual key code to a navigation key, classifying anything unrecognised as
+    /// `.unsupported` rather than dropping it (Bringr-93j.73), so the close-on-unsupported policy
+    /// can act on it. Both the number row and the keypad map to digits, and Return, keypad Enter,
+    /// and Space all confirm (Bringr-93j.72 added Space), so the keyboard layout doesn't matter.
+    init(keyCode: Int64) {
         switch keyCode {
         case 123: self = .arrow(.left)
         case 124: self = .arrow(.right)
@@ -114,8 +144,7 @@ enum KeyboardNavKey: Equatable, Sendable {
         case 36, 76, 49: self = .confirm
         case 53: self = .escape
         default:
-            guard let digit = Self.digitsByKeyCode[keyCode] else { return nil }
-            self = .digit(digit)
+            self = Self.digitsByKeyCode[keyCode].map(KeyboardNavKey.digit) ?? .unsupported
         }
     }
 

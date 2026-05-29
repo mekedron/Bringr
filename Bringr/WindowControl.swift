@@ -121,6 +121,14 @@ final class WindowController {
         if hideOnCommit { hideEveryAppExcept(app) }
     }
 
+    /// The app's current front (active) window — the first in z-order — or `nil` if it has none.
+    /// Keyboard nav lands its initial focus here when drilling into an app (Bringr-93j.73), so the
+    /// active window is focused regardless of how the sub-wheel is sorted; matched by stable token.
+    /// The same "front window is the app's choice" notion `commit(_ app:)` uses.
+    func frontWindow(of app: AppID) -> WindowID? {
+        system.windows(of: app).first
+    }
+
     // MARK: - Leave-only-my-selection on commit (Bringr-93j.27, Bringr-93j.49)
 
     /// Hide every app except `target` (Cmd-H), skipping those already hidden — the

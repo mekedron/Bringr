@@ -87,7 +87,7 @@ final class KeyboardNavMonitor {
         }
         guard type == .keyDown, isActive() else { return Unmanaged.passUnretained(event) }
         let keyCode = event.getIntegerValueField(.keyboardEventKeycode)
-        guard let key = KeyboardNavKey(keyCode: keyCode), onKey(key) else {
+        guard onKey(KeyboardNavKey(keyCode: keyCode)) else {
             return Unmanaged.passUnretained(event)
         }
         return nil // handled — swallow it so it can't reach the app underneath.

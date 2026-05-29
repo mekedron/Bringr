@@ -71,6 +71,8 @@ final class RadialNavigator {
     private(set) var prehighlighted: HoverRegion = .none
     /// Confirm-mode target a number focused but didn't activate; an arrow/Space/Return commits it (Bringr-93j.72).
     var pendingConfirmation: HoverRegion?
+    /// Numeric no-window-choice app to commit on release/confirm (Bringr-93j.73); nil once a window is picked.
+    var pendingAppCommit: Int?
     /// Whether the optional second-level cursor lock (Bringr-93j.29) is currently
     /// confining the pointer to the open app's windows sub-wheel and its parent app
     /// arc. Engaged when the cursor enters the windows ring (level 1); released when
@@ -80,7 +82,7 @@ final class RadialNavigator {
     /// from the persisted setting, so a Preferences change applies on the next open.
     private var cursorLockEnabled = false
 
-    private let windowControl: WindowController
+    let windowControl: WindowController
     /// Starts a curated app that has no window to focus (Bringr-93j.39), behind a seam
     /// so the launch branch of `commitApp` is testable without launching real apps.
     private let appLauncher: AppLaunching
@@ -106,10 +108,8 @@ final class RadialNavigator {
 
     // MARK: - Concentric geometry
 
-    /// Ring band for concentric `level`. Each level sits just outside the previous
-    /// one, reusing the base ring's thickness, so level 0 matches the single ring
-    /// US-006 shipped and the rings touch (no gap to fall through while gliding
-    /// outward from an app to its windows).
+    /// Ring band for concentric `level`: each sits just outside the previous, reusing the base
+    /// thickness, so level 0 matches the original single ring and the rings touch (no gap).
     func ringGeometry(forLevel level: Int) -> RadialGeometry {
         let thickness = baseGeometry.outerRadius - baseGeometry.innerRadius
         let inner = baseGeometry.innerRadius + CGFloat(level) * thickness
@@ -184,7 +184,7 @@ final class RadialNavigator {
         focusedWindowIndex = nil
         hovered = .none
         prehighlighted = .none
-        pendingConfirmation = nil
+        pendingConfirmation = nil; pendingAppCommit = nil
         cursorLockEngaged = false
     }
 
@@ -198,7 +198,7 @@ final class RadialNavigator {
     /// - off every ring (dead zone / outside): collapse back to apps and restore.
     func updateHover(_ region: HoverRegion) {
         hovered = region
-        pendingConfirmation = nil // any focus move clears a pending number-confirm (Bringr-93j.72)
+        pendingConfirmation = nil; pendingAppCommit = nil // a focus move clears a pending confirm/app-commit
         switch region {
         case .slice(level: 0, let index):
             // Back on the apps ring: the cursor reached the parent app arc, the gate
@@ -394,7 +394,7 @@ final class RadialNavigator {
 
     /// The app currently expanded on the apps ring, if any — the scope window
     /// isolation acts within.
-    private var expandedAppID: AppID? {
+    var expandedAppID: AppID? {
         expandedAppNode?.representedApp
     }
 }

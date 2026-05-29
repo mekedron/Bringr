@@ -41,8 +41,9 @@ extension RadialMenuController {
 
     /// Map a key to the navigator's decision, gating each key on the sub-mode that owns it:
     /// Escape always works while open; arrows need arrow mode; digits need number mode; Return
-    /// works in either (it commits arrow focus and confirms number focus). `nil` means "not for
-    /// keyboard nav" — pass it through.
+    /// works in either (it commits arrow focus and confirms number focus). An unsupported key
+    /// closes the wheel when that option is on, else passes through. `nil` means "not for keyboard
+    /// nav" — pass it through.
     private func keyboardOutcome(for key: KeyboardNavKey) -> KeyboardNavOutcome? {
         switch key {
         case .escape:
@@ -52,10 +53,30 @@ extension RadialMenuController {
             return navigator.keyboardMove(arrow)
         case .digit(let digit):
             guard keyboardConfig.numbersEnabled else { return nil }
-            return navigator.keyboardNumber(digit, requireConfirmation: keyboardConfig.requiresConfirmation)
+            return navigator.keyboardNumber(
+                digit, requireConfirmation: keyboardConfig.requiresConfirmation,
+                autoCommitsApp: keyboardConfig.commitsAppWithoutWindowChoice
+            )
         case .confirm:
             guard keyboardConfig.arrowsEnabled || keyboardConfig.numbersEnabled else { return nil }
             return navigator.keyboardConfirm()
+        case .unsupported:
+            // A key the wheel doesn't use: close it (a full cancel/restore via `escapePressed`)
+            // when "close on any other key" is on, otherwise let it pass through (Bringr-93j.73).
+            return keyboardConfig.closesOnUnsupportedKey ? .close : nil
         }
+    }
+
+    /// Commit the app a numeric jump landed on but never picked a window in, when "don't require a
+    /// window choice" is on (Bringr-93j.73): in hold-to-select, releasing the trigger over that
+    /// auto-previewed multi-window app activates the app (and its active window) instead of
+    /// cancelling on the dead-zone cursor. Returns whether it committed, so the normal release
+    /// handling runs only when it didn't.
+    func commitPendingAppOnRelease() -> Bool {
+        guard machine.mode == .holdToSelect, let appIndex = navigator.pendingAppCommit,
+              navigator.commit(.slice(level: 0, index: appIndex)) != nil else { return false }
+        machine.markClosed()
+        hideOverlay()
+        return true
     }
 }

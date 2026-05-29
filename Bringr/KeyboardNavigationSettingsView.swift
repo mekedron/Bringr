@@ -10,6 +10,10 @@ struct KeyboardNavigationSettings: View {
     @AppStorage(KeyboardNavigation.arrowsKey) private var arrows = KeyboardNavigation.arrowsDefault
     @AppStorage(KeyboardNavigation.numbersKey) private var numbers = KeyboardNavigation.numbersDefault
     @AppStorage(KeyboardNavigation.confirmKey) private var requireConfirmation = KeyboardNavigation.confirmDefault
+    @AppStorage(KeyboardNavigation.closeOnUnsupportedKey)
+    private var closeOnUnsupported = KeyboardNavigation.closeOnUnsupportedDefault
+    @AppStorage(KeyboardNavigation.commitAppWithoutWindowChoiceKey)
+    private var commitAppWithoutWindowChoice = KeyboardNavigation.commitAppWithoutWindowChoiceDefault
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
@@ -24,9 +28,21 @@ struct KeyboardNavigationSettings: View {
 
             if enabled {
                 Divider()
+                closeOnUnsupportedControls
                 arrowsControls
                 numbersControls
             }
+        }
+    }
+
+    private var closeOnUnsupportedControls: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Toggle("Close the wheel on any other key", isOn: $closeOnUnsupported)
+            Text("Pressing a key the wheel doesn't use closes it. Turn this off to ignore those "
+                 + "keys and keep the wheel open.")
+                .font(.callout)
+                .foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
         }
     }
 
@@ -56,6 +72,14 @@ struct KeyboardNavigationSettings: View {
                 Text("A number only focuses and previews the item, so you can look inside a window "
                      + "before committing. Confirm with Return, Space, an arrow key, or by pressing "
                      + "the same number again.")
+                    .font(.callout)
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+
+                Toggle("Commit a multi-window app without choosing a window", isOn: $commitAppWithoutWindowChoice)
+                Text("After a number jumps to an app with several windows, releasing the trigger or "
+                     + "confirming without picking a window activates that app and its active window, "
+                     + "instead of cancelling. Pick a window with a number or arrow as usual.")
                     .font(.callout)
                     .foregroundStyle(.secondary)
                     .fixedSize(horizontal: false, vertical: true)

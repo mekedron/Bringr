@@ -143,6 +143,7 @@ final class RadialMenuController: ObservableObject {
     /// A hold-capable trigger was released. Hold-to-select commits on what the
     /// cursor is over; click-to-stay ignores the release and keeps the menu open.
     func triggerReleased(at cursor: CGPoint) {
+        if commitPendingAppOnRelease() { return } // numeric no-window-choice app commit (Bringr-93j.73)
         let region = navigator.region(forOffset: offset(forGlobalCursor: cursor))
         route(machine.handle(.triggerReleased(over: sliceTarget(region))), region: region)
     }

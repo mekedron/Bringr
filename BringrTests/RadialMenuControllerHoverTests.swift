@@ -105,6 +105,42 @@ final class RadialMenuControllerHoverTests: XCTestCase {
         XCTAssertFalse(controller.acceptsKeyboardNav)
     }
 
+    /// Releasing the trigger over a number-jumped multi-window app the user never picked a window in
+    /// commits that app rather than reverting, when "don't require a window choice" is on
+    /// (Bringr-93j.73). Driven through the controller's release entry point in hold-to-select.
+    func testReleaseCommitsArmedAppWithoutWindowChoice() {
+        let fake = FakeWindowSystem(
+            apps: [
+                FakeWindowSystem.AppState(id: AppID(pid: 10), hidden: false, windows: [win(10, 11), win(10, 12)]),
+                FakeWindowSystem.AppState(id: AppID(pid: 20), hidden: false, windows: [win(20, 21)])
+            ],
+            frontmost: AppID(pid: 20) // the prior frontmost a plain release would revert to
+        )
+        let source = StubEnumerationSource(selfPID: 1, windows: [
+            raw(number: 11, pid: 10, name: "Chrome", title: "Inbox"),
+            raw(number: 12, pid: 10, name: "Chrome", title: "Docs"),
+            raw(number: 21, pid: 20, name: "Ghostty", title: "Terminal")
+        ])
+        let registry = MenuRegistry()
+        registry.register(WindowSwitcherMenu(enumerator: WindowEnumerator(source: source)), for: .mouseChord)
+        let controller = RadialMenuController(
+            registry: registry, windowControl: WindowController(system: fake),
+            modeProvider: { .holdToSelect }, appearanceProvider: { .default },
+            monitorInstaller: MonitorRecorder().installer()
+        )
+        // Bypass summon — headless display scoping yields 0 apps — by opening a populated tree.
+        let appNodes = WindowSwitcherMenu(enumerator: WindowEnumerator(source: source)).makeRoot().resolvedChildren()
+        controller.navigator.open(appNodes: appNodes)
+        _ = controller.navigator.keyboardNumber(1, requireConfirmation: false, autoCommitsApp: true) // arm Chrome
+        XCTAssertEqual(controller.navigator.pendingAppCommit, 0)
+
+        controller.triggerReleased(at: .zero)
+
+        XCTAssertEqual(fake.frontmost, AppID(pid: 10), "release commits the armed app, not a revert to Ghostty")
+        XCTAssertNil(controller.navigator.pendingAppCommit)
+        XCTAssertTrue(controller.navigator.rings.isEmpty, "the wheel is cleared after the commit")
+    }
+
     /// Set up: enable keyboard navigation in the standard defaults the controller reads at summon,
     /// cleaning up after so the global domain isn't polluted for other tests.
     private func setKeyboardNavEnabled() {

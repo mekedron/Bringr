@@ -37,7 +37,7 @@ extension RadialNavigator {
             case .right:
                 updateHover(.slice(level: 0, index: KeyboardNavMath.wrap(index + 1, count: appCount)))
             case .up where hasWindowSubWheel:
-                updateHover(.slice(level: 1, index: 0))
+                updateHover(.slice(level: 1, index: activeWindowIndex()))
             case .up, .down:
                 break // Down at the top level, or Up into a window-less app, is a no-op.
             }
@@ -70,15 +70,21 @@ extension RadialNavigator {
     /// window it picks a window — app numbers stay disabled until the focus steps back up
     /// (Bringr-93j.71). `requireConfirmation` turns an otherwise instant activation into a focus
     /// that is armed for confirmation (Bringr-93j.72).
-    func keyboardNumber(_ digit: Int, requireConfirmation: Bool) -> KeyboardNavOutcome {
+    func keyboardNumber(
+        _ digit: Int, requireConfirmation: Bool, autoCommitsApp: Bool = false
+    ) -> KeyboardNavOutcome {
         guard let index = KeyboardNavMath.index(forDigit: digit), !rings.isEmpty else { return .ignored }
         if case .slice(level: 1, _) = hovered {
             return keyboardWindowNumber(at: index, requireConfirmation: requireConfirmation)
         }
-        return keyboardAppNumber(at: index, requireConfirmation: requireConfirmation)
+        return keyboardAppNumber(
+            at: index, requireConfirmation: requireConfirmation, autoCommitsApp: autoCommitsApp
+        )
     }
 
-    private func keyboardAppNumber(at index: Int, requireConfirmation: Bool) -> KeyboardNavOutcome {
+    private func keyboardAppNumber(
+        at index: Int, requireConfirmation: Bool, autoCommitsApp: Bool
+    ) -> KeyboardNavOutcome {
         guard let appsRing = rings.first, index >= 0, index < appsRing.nodes.count else { return .handled }
         // Re-pressing the focused window-less app's own number confirms it (Bringr-93j.72).
         if requireConfirmation, pendingConfirmation == .slice(level: 0, index: index) {
@@ -100,9 +106,11 @@ extension RadialNavigator {
             updateHover(.slice(level: 1, index: 0))
             return arm(.slice(level: 1, index: 0))
         }
-        // Several windows: drop into them and preview the first, so the next number addresses
-        // windows; the user still has to pick one, so nothing is armed yet.
-        updateHover(.slice(level: 1, index: 0))
+        // Several windows: drop in and preview the app's active window (Bringr-93j.73); the user can
+        // still pick another by number/arrow. With "don't require a window choice" on, arm the app so
+        // a release/confirm without a pick commits the app rather than reverting.
+        updateHover(.slice(level: 1, index: activeWindowIndex()))
+        if autoCommitsApp { pendingAppCommit = index }
         return .handled
     }
 
@@ -132,10 +140,27 @@ extension RadialNavigator {
         return .committed(result)
     }
 
-    /// Activate whatever is focused (Return / Space). A dead-zone / nothing-focused confirm is
-    /// consumed as a no-op rather than leaking to the app underneath.
+    /// Activate whatever is focused (Return / Space). When a number jumped to a multi-window app
+    /// under "don't require a window choice", confirm commits that app instead of the previewed
+    /// window (Bringr-93j.73). A dead-zone / nothing-focused confirm is consumed as a no-op rather
+    /// than leaking to the app underneath.
     func keyboardConfirm() -> KeyboardNavOutcome {
-        commitOutcome(hovered)
+        if let appIndex = pendingAppCommit { return commitOutcome(.slice(level: 0, index: appIndex)) }
+        return commitOutcome(hovered)
+    }
+
+    /// The index, in the open windows sub-wheel, of the expanded app's active (front) window — so a
+    /// keyboard drill-in lands focus on the active window rather than the first slice (Bringr-93j.73).
+    /// Matches by stable window token, so it is correct regardless of the sub-wheel's sort order;
+    /// falls back to 0 when the app's front window can't be matched (e.g. it isn't in the sub-wheel).
+    private func activeWindowIndex() -> Int {
+        guard rings.count > 1, let appID = expandedAppID,
+              let front = windowControl.frontWindow(of: appID) else { return 0 }
+        let index = rings[1].nodes.firstIndex {
+            guard case .focusWindow(let id) = $0.action else { return false }
+            return id == front
+        }
+        return index ?? 0
     }
 
     /// Escape: from a focused window, step back up to its parent app — restoring that window's
