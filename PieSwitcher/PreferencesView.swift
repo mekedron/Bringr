@@ -29,7 +29,7 @@ struct PreferencesView: View {
                 section("Interaction") { interactionSection }
                 section("Keyboard Navigation") { KeyboardNavigationSettings() }
                 section("Haptics") { TrackpadHapticsSettings() }
-                section("Reveal") { revealSection }
+                section("Reveal mode") { revealSection }
                 section("Sorting") { SortingSettings() }
                 section("Collection") { collectionSection }
                 section("Excluded Apps") { IgnoreListSettings() }
@@ -242,35 +242,43 @@ private struct InteractionSettings: View {
 /// screen" toggle (Bringr-93j.27), grouped in their own view so the Preferences body
 /// stays within its length budget. Both keys are read fresh at each summon by
 /// `RadialMenuController`, so a change here applies on the next open without a relaunch.
+///
+/// The "leave only my selection on screen" toggle is gated to the `.raiseToFront`
+/// strategy (Bringr-93j.89): `.hideOthers` already hides everything else at hover
+/// time, so the post-commit hide is redundant and the checkbox would be meaningless.
 private struct RevealSettings: View {
     @AppStorage(RevealStrategy.defaultsKey) private var revealStrategyRaw = RevealStrategy.default.rawValue
     @AppStorage(HideOnCommit.defaultsKey) private var hideOnCommit = HideOnCommit.default
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 16) {
+        let strategy = RevealStrategy(rawValue: revealStrategyRaw) ?? .default
+        return VStack(alignment: .leading, spacing: 16) {
             VStack(alignment: .leading, spacing: 8) {
-                Picker("When hovering:", selection: $revealStrategyRaw) {
+                Picker("Reveal mode", selection: $revealStrategyRaw) {
                     ForEach(RevealStrategy.allCases, id: \.rawValue) { strategy in
                         Text(strategy.displayName).tag(strategy.rawValue)
                     }
                 }
                 .pickerStyle(.radioGroup)
+                .labelsHidden()
 
-                Text((RevealStrategy(rawValue: revealStrategyRaw) ?? .default).detail)
+                Text(strategy.detail)
                     .font(.callout)
                     .foregroundStyle(.secondary)
                     .fixedSize(horizontal: false, vertical: true)
             }
 
-            VStack(alignment: .leading, spacing: 8) {
-                Toggle("Leave only my selection on screen", isOn: $hideOnCommit)
+            if strategy == .raiseToFront {
+                VStack(alignment: .leading, spacing: 8) {
+                    Toggle("Leave only my selection on screen", isOn: $hideOnCommit)
 
-                Text("After you choose, hide everything else so only your selection remains. "
-                     + "Picking a window minimizes its app's other windows and hides every other "
-                     + "app; picking an app leaves just its front window.")
-                    .font(.callout)
-                    .foregroundStyle(.secondary)
-                    .fixedSize(horizontal: false, vertical: true)
+                    Text("After you choose, hide everything else so only your selection remains. "
+                         + "Picking a window minimizes its app's other windows and hides every other "
+                         + "app; picking an app leaves just its front window.")
+                        .font(.callout)
+                        .foregroundStyle(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
             }
         }
     }
