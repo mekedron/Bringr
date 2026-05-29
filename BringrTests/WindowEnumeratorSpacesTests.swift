@@ -201,8 +201,10 @@ final class WindowEnumeratorVisibilityTests: XCTestCase {
     }
 
     func testOnscreenWindowKeptEvenWhenNotAXBacked() {
-        // The AX-backing drop applies only to the off-screen records broadening adds; an
-        // on-screen record is always real and is kept (the keep-rule checks onscreen first).
+        // Without on-screen validation (here, all-Spaces but screen-scoped), the AX-backing drop
+        // applies only to the off-screen records broadening adds; an on-screen record is trusted
+        // and kept (the keep-rule checks onscreen first). On-screen phantom culling is the
+        // separate `validatesOnscreen` path (Bringr-93j.60), covered in its own test class.
         let source = FakeWindowEnumerationSource(
             selfPID: selfPID,
             windows: [raw(number: 1, pid: 10, name: "Chrome")],
@@ -338,7 +340,7 @@ private func raw(
     number: Int, pid: pid_t, name: String,
     x: CGFloat = 0, y: CGFloat = 0, width: CGFloat = 800, height: CGFloat = 600,
     isOnscreen: Bool = true, isMinimized: Bool = false, isHidden: Bool = false,
-    isAXBacked: Bool = true, isDockApp: Bool = true
+    isAXBacked: Bool = true, isDockApp: Bool = true, isManagedWindow: Bool = false
 ) -> RawWindow {
     RawWindow(
         windowNumber: number,
@@ -352,6 +354,7 @@ private func raw(
         isMinimized: isMinimized,
         isHidden: isHidden,
         isAXBacked: isAXBacked,
-        isDockApp: isDockApp
+        isDockApp: isDockApp,
+        isManagedWindow: isManagedWindow
     )
 }

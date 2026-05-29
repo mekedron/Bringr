@@ -15,7 +15,7 @@ final class CGWindowSource: WindowEnumerationSource {
     /// Window control mutates its own separate instance.
     private let stateProbe = LiveWindowSystem()
 
-    func rawWindows(includingOffscreen: Bool) -> [RawWindow] {
+    func rawWindows(includingOffscreen: Bool, validatingOnscreen: Bool) -> [RawWindow] {
         // `.optionOnScreenOnly` limits the list to windows on the current Space that aren't
         // minimized or hidden; dropping it (an all-windows query) is the only public way to
         // reach all three groups (Bringr-93j.48 / Bringr-93j.50). The narrow form is left
@@ -38,7 +38,29 @@ final class CGWindowSource: WindowEnumerationSource {
                 dockPIDs: dockPIDs, ignoredPIDs: ignoredPIDs
             )
         }
-        return includingOffscreen ? classify(raws) : raws
+        let classified = includingOffscreen ? classify(raws) : raws
+        // All-screens has no screen filter to cull off-display phantoms, so stamp each on-screen
+        // record's managed-Space membership and let the enumerator drop the phantoms (Bringr-93j.60).
+        return validatingOnscreen ? validateOnscreen(classified) : classified
+    }
+
+    /// Stamp every on-screen Dock-app record with whether it lives on a managed Space, the cheap
+    /// window-server signal that tells a real on-screen window from a phantom backing surface
+    /// (Bringr-93j.60). Only the on-screen records are touched — the broadened `classify` already
+    /// stamped the off-screen ones, and a non-Dock record is dropped earlier regardless. Unlike
+    /// `classify` this issues no AX IPC (no per-app `copyWindows`, no unresponsive-app hang), so
+    /// it needs no caching and is safe on the per-hover narrow path.
+    private func validateOnscreen(_ raws: [RawWindow]) -> [RawWindow] {
+        let onscreen = raws.filter { $0.isOnscreen && $0.isDockApp }
+        guard !onscreen.isEmpty else { return raws }
+        let managed = CGWindowSpaces.managedWindowNumbers(among: onscreen.map(\.windowNumber))
+        return raws.map { raw in
+            guard raw.isOnscreen, raw.isDockApp else { return raw }
+            return raw.classified(
+                isMinimized: raw.isMinimized, isHidden: raw.isHidden,
+                isAXBacked: raw.isAXBacked, isManagedWindow: managed.contains(raw.windowNumber)
+            )
+        }
     }
 
     /// PIDs of currently-running apps the user has excluded (Bringr-93j.59), resolved once per

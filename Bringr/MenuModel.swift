@@ -194,6 +194,7 @@ struct WindowSwitcherMenu: MenuDefinition {
                 enumerator.enumerate(
                     onScreen: appsScope.screenBounds, allSpaces: appsScope.allSpaces,
                     includeMinimized: appsScope.includeMinimized, includeHidden: appsScope.includeHidden,
+                    validatesOnscreen: appsScope.validatesOnscreen,
                     recordingRecency: true
                 ).map {
                     Self.appNode($0, windowsScope: windowsScope, enumerator: enumerator)
@@ -222,7 +223,8 @@ struct WindowSwitcherMenu: MenuDefinition {
             children: .dynamic {
                 let current = enumerator.enumerate(
                     onScreen: windowsScope.screenBounds, allSpaces: windowsScope.allSpaces,
-                    includeMinimized: windowsScope.includeMinimized, includeHidden: windowsScope.includeHidden
+                    includeMinimized: windowsScope.includeMinimized, includeHidden: windowsScope.includeHidden,
+                    validatesOnscreen: windowsScope.validatesOnscreen
                 ).first { $0.id == appID }
                 return (current?.windows ?? []).map { Self.windowNode($0) }
             }

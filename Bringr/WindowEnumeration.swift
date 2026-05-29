@@ -3,109 +3,6 @@ import CoreGraphics
 import Foundation
 import os
 
-/// A window discovered at summon time, with the metadata the wheel needs to
-/// render and target it. `id` carries the stable, system-assigned window number
-/// (stable for the window's lifetime), so a remembered selection (US-012) can be
-/// matched across summons.
-struct WindowInfo: Equatable, Sendable {
-    let id: WindowID
-    let title: String
-
-    /// The application that owns this window.
-    var app: AppID { id.app }
-}
-
-/// An application that currently owns at least one normal, on-screen window,
-/// paired with those windows in front-to-back order.
-struct AppWindows: Equatable, Sendable {
-    let id: AppID
-    let name: String
-    let windows: [WindowInfo]
-}
-
-/// A raw window record straight from the system window list, before any filtering or
-/// grouping. Plain values so `WindowEnumerator`'s logic can be exercised with fixtures and
-/// never touches the live window server in tests.
-///
-/// `isOnscreen`/`isMinimized`/`isHidden` classify a record once a broadened (all-windows)
-/// query has surfaced windows the current-Space query hides (Bringr-93j.50): `isOnscreen`
-/// is the system's "on the active Space, not minimized, not hidden" flag; the other two are
-/// stamped by the live source from AX / `NSRunningApplication`. They default to a plain
-/// on-screen window, so the current-Space query and existing fixtures need not set them.
-struct RawWindow: Equatable, Sendable {
-    let windowNumber: Int
-    let ownerPID: pid_t
-    let ownerName: String
-    let title: String
-    let layer: Int
-    let alpha: Double
-    let bounds: CGRect
-    let isOnscreen: Bool
-    let isMinimized: Bool
-    let isHidden: Bool
-    /// Whether the owning app's AX window list contains this number — i.e. Bringr can raise/
-    /// focus it (Bringr-93j.52). Off-screen records the broadened query surfaces that aren't
-    /// AX-backed are phantom helper surfaces (Chrome/Ghostty keep them) you can't focus, so
-    /// they're dropped. Defaults true (on-screen windows are real), so fixtures needn't set it.
-    let isAXBacked: Bool
-    /// Whether the owning app is an ordinary Dock app (`activationPolicy == .regular`); the
-    /// switcher drops background/agent/menu-bar-only apps so broadening to all Spaces/screens
-    /// no longer floods the ring with them (Bringr-93j.51). Defaults true, so the narrow query
-    /// and existing fixtures need not set it.
-    let isDockApp: Bool
-    /// Whether the owning app is on the user's exclusion list (Bringr-93j.59) — apps that must
-    /// never appear in the wheel, matched by bundle id or name in `CGWindowSource`. Defaults
-    /// false (nothing excluded), so the empty-list path and existing fixtures need not set it.
-    let isIgnored: Bool
-    /// Whether the window server reports this window as living on a managed Space (Bringr-93j.54).
-    /// This is the cross-Space "is this a real, focusable window" signal: `isAXBacked` can't
-    /// keep genuine other-Space windows because `kAXWindowsAttribute` never enumerates other
-    /// Spaces, so such a window is AX-absent yet Space-assigned, while a phantom helper surface
-    /// is neither. Defaults false, so the narrow query and existing fixtures (which keep real
-    /// off-screen windows via `isAXBacked`) need not set it; the live source stamps it only on
-    /// the broadened path's off-screen records.
-    let isManagedWindow: Bool
-
-    init(
-        windowNumber: Int, ownerPID: pid_t, ownerName: String, title: String,
-        layer: Int, alpha: Double, bounds: CGRect,
-        isOnscreen: Bool = true, isMinimized: Bool = false, isHidden: Bool = false,
-        isAXBacked: Bool = true, isDockApp: Bool = true, isIgnored: Bool = false,
-        isManagedWindow: Bool = false
-    ) {
-        self.windowNumber = windowNumber
-        self.ownerPID = ownerPID
-        self.ownerName = ownerName
-        self.title = title
-        self.layer = layer
-        self.alpha = alpha
-        self.bounds = bounds
-        self.isOnscreen = isOnscreen
-        self.isMinimized = isMinimized
-        self.isHidden = isHidden
-        self.isAXBacked = isAXBacked
-        self.isDockApp = isDockApp
-        self.isIgnored = isIgnored
-        self.isManagedWindow = isManagedWindow
-    }
-
-    /// A copy carrying the per-window minimized/hidden/AX-backed/managed classification the
-    /// live source resolves after the raw list is parsed (Bringr-93j.50 / Bringr-93j.52 /
-    /// Bringr-93j.54). The Dock-app and ignored stamps are preserved from `self` (set when the
-    /// record was first built).
-    func classified(
-        isMinimized: Bool, isHidden: Bool, isAXBacked: Bool, isManagedWindow: Bool
-    ) -> RawWindow {
-        RawWindow(
-            windowNumber: windowNumber, ownerPID: ownerPID, ownerName: ownerName, title: title,
-            layer: layer, alpha: alpha, bounds: bounds,
-            isOnscreen: isOnscreen, isMinimized: isMinimized, isHidden: isHidden,
-            isAXBacked: isAXBacked, isDockApp: isDockApp, isIgnored: isIgnored,
-            isManagedWindow: isManagedWindow
-        )
-    }
-}
-
 /// Source of raw on-screen window records, behind a seam (mirrors
 /// `WindowControlling`). The live conformer reads CoreGraphics' window list; the
 /// test conformer returns fixtures, so enumeration logic runs with no live
@@ -120,7 +17,13 @@ protocol WindowEnumerationSource {
     /// classifies each record (`isOnscreen`/`isMinimized`/`isHidden`) so `WindowEnumerator`
     /// can keep only the categories the caller asked for; the narrow query needs no
     /// classification (every record is on-screen).
-    func rawWindows(includingOffscreen: Bool) -> [RawWindow]
+    ///
+    /// `validatingOnscreen` additionally stamps each on-screen record's managed-Space
+    /// membership (Bringr-93j.60) — the cheap window-server signal that tells a real on-screen
+    /// window from a phantom backing surface. The enumerator asks for it only when there is no
+    /// screen filter (all displays) to cull phantoms geometrically; off (the default), on-screen
+    /// records are returned untouched and trusted, exactly as before.
+    func rawWindows(includingOffscreen: Bool, validatingOnscreen: Bool) -> [RawWindow]
     /// This process's pid, so Bringr's own windows can be excluded.
     var selfPID: pid_t { get }
 }
@@ -173,8 +76,11 @@ final class WindowEnumerator {
     /// (`recordingRecency: true`, the one authoritative per-summon read), so it never goes
     /// stale across summons. `nil` on the narrow (default) path, which is never cached so its
     /// per-hover live re-read — and the Bringr-93j.31 sub-wheel retry that relies on it — is
-    /// preserved exactly.
-    private var broadenedRawCache: [RawWindow]?
+    /// preserved exactly. Keyed by `validatingOnscreen` too (Bringr-93j.60): an all-screens
+    /// broadened read stamps on-screen managed membership while a current-screen broadened read
+    /// does not, so the two must not serve each other's list within a summon — a key mismatch
+    /// re-fetches.
+    private var broadenedRawCache: (validatingOnscreen: Bool, windows: [RawWindow])?
 
     init(
         source: WindowEnumerationSource? = nil,
@@ -220,11 +126,19 @@ final class WindowEnumerator {
     /// *before* any reveal perturbs the z-order; the hover re-reads pass `false` so a
     /// preview never updates the recent-use order. With no `RecencyTracker` injected this
     /// flag is inert.
+    /// `validatesOnscreen` keeps an on-screen window only if it is a real, focusable window
+    /// (Bringr-93j.60). Off (the default) trusts every on-screen record, the prior behaviour, so
+    /// the hot default path is unchanged and existing callers/tests are unaffected. On — passed
+    /// only when `screenBounds` is `nil`, where no screen filter culls off-display phantoms — an
+    /// on-screen record must be on a managed Space (the source stamps `isManagedWindow`); a
+    /// phantom backing surface is not. This is what stopped "all screens" from listing phantom
+    /// windows that don't exist.
     func enumerate(
         onScreen screenBounds: CGRect? = nil,
         allSpaces: Bool = false,
         includeMinimized: Bool = false,
         includeHidden: Bool = false,
+        validatesOnscreen: Bool = false,
         recordingRecency: Bool = false
     ) -> [AppWindows] {
         let start = DispatchTime.now().uptimeNanoseconds
@@ -237,9 +151,20 @@ final class WindowEnumerator {
         // off-Space / minimized / hidden windows); with none set, the cheap current-Space
         // query suffices and every record is already on-screen.
         let includingOffscreen = allSpaces || includeMinimized || includeHidden
-        let normal = normalWindows(includingOffscreen: includingOffscreen)
+        let normal = normalWindows(includingOffscreen: includingOffscreen, validatingOnscreen: validatesOnscreen)
+        // In the broadening / on-screen-validating modes the phantom report (Bringr-93j.60) is
+        // worth the per-window detail; the hot default path never logs.
+        if includingOffscreen || validatesOnscreen {
+            logCollection(
+                normal, allSpaces: allSpaces, includeMinimized: includeMinimized,
+                includeHidden: includeHidden, validatesOnscreen: validatesOnscreen
+            )
+        }
         let collected = normal.filter {
-            shouldCollect($0, allSpaces: allSpaces, includeMinimized: includeMinimized, includeHidden: includeHidden)
+            shouldCollect(
+                $0, allSpaces: allSpaces, includeMinimized: includeMinimized,
+                includeHidden: includeHidden, validatesOnscreen: validatesOnscreen
+            )
         }
         let onScreen = filter(collected, toScreen: screenBounds)
         let grouped = group(onScreen)
@@ -257,42 +182,115 @@ final class WindowEnumerator {
     /// screen filter that `enumerate` applies afterwards differ — so re-fetching it on every
     /// hover was pure repeated cost. The narrow (default) path is deliberately not cached, so its
     /// per-hover live re-read stays exactly as before.
-    private func normalWindows(includingOffscreen: Bool) -> [RawWindow] {
+    /// The all-screens-only read (`validatingOnscreen` without broadening) is deliberately on
+    /// the uncached branch with the default path (Bringr-93j.60): its only added cost is the
+    /// source's cheap window-server managed-Space stamp — not the AX classify the cache exists
+    /// to amortise — and leaving it uncached preserves the Bringr-93j.31 sub-wheel retry's fresh
+    /// post-reveal scan.
+    private func normalWindows(includingOffscreen: Bool, validatingOnscreen: Bool) -> [RawWindow] {
         guard includingOffscreen else {
-            return source.rawWindows(includingOffscreen: false).filter(isNormalWindow)
+            return source.rawWindows(
+                includingOffscreen: false, validatingOnscreen: validatingOnscreen
+            ).filter(isNormalWindow)
         }
-        if let cached = broadenedRawCache { return cached }
-        let normal = source.rawWindows(includingOffscreen: true).filter(isNormalWindow)
-        broadenedRawCache = normal
+        if let cached = broadenedRawCache, cached.validatingOnscreen == validatingOnscreen {
+            return cached.windows
+        }
+        let normal = source.rawWindows(
+            includingOffscreen: true, validatingOnscreen: validatingOnscreen
+        ).filter(isNormalWindow)
+        broadenedRawCache = (validatingOnscreen, normal)
         return normal
     }
 
-    /// Whether to keep a (normal) window given the broadening flags (Bringr-93j.50). A window
-    /// whose owning app is on the user's exclusion list is always dropped — the strongest rule,
-    /// applied before everything else, so an excluded app never appears no matter what
-    /// (Bringr-93j.59). A window whose owning app isn't an ordinary Dock app is likewise dropped
-    /// — the switcher shows only Dock apps, on the narrow path too, so "all screens" alone stops
-    /// surfacing background / agent / menu-bar apps (Bringr-93j.51). Otherwise an on-screen
-    /// window is always kept (the default set). An off-screen record that is neither AX-backed
-    /// nor on a managed Space is a phantom helper surface Bringr can't focus, so it is dropped
-    /// regardless of flags: AX backing covers same-Space / minimized / hidden windows
-    /// (Bringr-93j.52), and managed-Space membership covers genuine other-Space windows that AX
+    /// Whether to keep a (normal) window given the broadening flags. Thin wrapper over
+    /// `decision(for:...)`, which carries the keep/drop reason so the same rule drives both
+    /// collection and the Bringr-93j.60 phantom logging without drifting.
+    private func shouldCollect(
+        _ window: RawWindow, allSpaces: Bool, includeMinimized: Bool,
+        includeHidden: Bool, validatesOnscreen: Bool
+    ) -> Bool {
+        decision(
+            for: window, allSpaces: allSpaces, includeMinimized: includeMinimized,
+            includeHidden: includeHidden, validatesOnscreen: validatesOnscreen
+        ).keep
+    }
+
+    /// The keep/drop verdict for one (normal) window, with a human-readable reason for logging.
+    ///
+    /// A window whose owning app is on the user's exclusion list is always dropped — the
+    /// strongest rule, applied before everything else (Bringr-93j.59). A window whose owning app
+    /// isn't an ordinary Dock app is likewise dropped — the switcher shows only Dock apps, on the
+    /// narrow path too, so "all screens" alone stops surfacing background / agent / menu-bar apps
+    /// (Bringr-93j.51).
+    ///
+    /// An on-screen window is kept outright when not validating (`validatesOnscreen` off — the
+    /// screen filter culls off-display phantoms geometrically). When validating (all screens, no
+    /// screen filter) it is kept only if it is on a managed Space (Bringr-93j.60): a real on-screen
+    /// window is; a phantom backing surface Chrome/Ghostty keep is not — and those phantoms,
+    /// having no screen filter to cull them, were exactly what "all screens" surfaced as windows
+    /// that don't exist.
+    ///
+    /// An off-screen record that is neither AX-backed nor on a managed Space is a phantom Bringr
+    /// can't focus, dropped regardless of flags: AX backing covers same-Space / minimized / hidden
+    /// windows (Bringr-93j.52), managed-Space membership covers genuine other-Space windows AX
     /// never enumerates (Bringr-93j.54) — a phantom is neither. The rest are classified by
     /// precedence — a hidden app's windows count as hidden even if also minimized, since
     /// `includeHidden` is meant to bring a whole hidden app back — then kept only if the matching
-    /// flag is on; anything left (off-Space) rides on `allSpaces`. With every flag off the source
-    /// returned only on-screen windows (Dock-app / not-ignored by default), so this keeps them all
-    /// unchanged.
-    private func shouldCollect(
-        _ window: RawWindow, allSpaces: Bool, includeMinimized: Bool, includeHidden: Bool
-    ) -> Bool {
-        if window.isIgnored { return false }
-        if !window.isDockApp { return false }
-        if window.isOnscreen { return true }
-        if !window.isAXBacked && !window.isManagedWindow { return false }
-        if window.isHidden { return includeHidden }
-        if window.isMinimized { return includeMinimized }
-        return allSpaces
+    /// flag is on; anything left (off-Space) rides on `allSpaces`.
+    private func decision(
+        for window: RawWindow, allSpaces: Bool, includeMinimized: Bool,
+        includeHidden: Bool, validatesOnscreen: Bool
+    ) -> (keep: Bool, reason: String) {
+        if window.isIgnored { return (false, "owning app is on the ignore list") }
+        if !window.isDockApp { return (false, "owning app is not an ordinary Dock app") }
+        if window.isOnscreen {
+            guard validatesOnscreen else { return (true, "on-screen (screen-scoped, trusted)") }
+            return window.isManagedWindow
+                ? (true, "on-screen and on a managed Space")
+                : (false, "on-screen but on no managed Space (phantom surface)")
+        }
+        if !window.isAXBacked && !window.isManagedWindow {
+            return (false, "off-screen, neither AX-backed nor on a managed Space (phantom)")
+        }
+        if window.isHidden {
+            return (includeHidden, includeHidden ? "hidden-app window (included)" : "hidden-app window (excluded)")
+        }
+        if window.isMinimized {
+            return (includeMinimized, includeMinimized ? "minimized window (included)" : "minimized window (excluded)")
+        }
+        return (allSpaces, allSpaces ? "off-Space window (included)" : "off-Space window (excluded)")
+    }
+
+    /// Log every normal window with its identifiers, classification signals, and the keep/drop
+    /// reason, so a recurrence of the phantom-window bug is diagnosable from the logs without a
+    /// rebuild (Bringr-93j.60). Only called in the broadening / on-screen-validating modes — the
+    /// hot default path never logs — and at `.debug`, so it's available on demand (Console or
+    /// `log show --debug --predicate 'subsystem == "com.mekedron.Bringr"'`) without spamming
+    /// ordinary use. Window titles are intentionally omitted (they can carry private content);
+    /// the CG window number is the stable identifier for cross-referencing.
+    private func logCollection(
+        _ windows: [RawWindow], allSpaces: Bool, includeMinimized: Bool,
+        includeHidden: Bool, validatesOnscreen: Bool
+    ) {
+        log.debug("""
+            Collection scan: \(windows.count) normal window(s) — allSpaces:\(allSpaces) \
+            includeMinimized:\(includeMinimized) includeHidden:\(includeHidden) \
+            validatesOnscreen:\(validatesOnscreen)
+            """)
+        for window in windows {
+            let verdict = decision(
+                for: window, allSpaces: allSpaces, includeMinimized: includeMinimized,
+                includeHidden: includeHidden, validatesOnscreen: validatesOnscreen
+            )
+            log.debug("""
+                \(verdict.keep ? "KEEP" : "DROP") \(window.ownerName, privacy: .public) \
+                #\(window.windowNumber) pid:\(window.ownerPID) \
+                on:\(window.isOnscreen) managed:\(window.isManagedWindow) ax:\(window.isAXBacked) \
+                min:\(window.isMinimized) hidden:\(window.isHidden) dock:\(window.isDockApp) \
+                \(Int(window.bounds.width))x\(Int(window.bounds.height)) — \(verdict.reason, privacy: .public)
+                """)
+        }
     }
 
     private func isNormalWindow(_ window: RawWindow) -> Bool {

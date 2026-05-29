@@ -265,5 +265,5 @@ final class StubEnumerationSource: WindowEnumerationSource {
         self.windows = windows
     }
 
-    func rawWindows(includingOffscreen: Bool) -> [RawWindow] { windows }
+    func rawWindows(includingOffscreen: Bool, validatingOnscreen: Bool) -> [RawWindow] { windows }
 }

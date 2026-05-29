@@ -20,17 +20,26 @@ struct CollectionScope: Equatable, Sendable {
     /// "hide everything else" hid (Bringr-93j.50). Off → such windows are left out, the prior
     /// behaviour. Like `includeMinimized`, turning it on widens the query.
     let includeHidden: Bool
+    /// Whether on-screen windows must be validated as real, focusable windows before being
+    /// collected (Bringr-93j.60). Off (the default) trusts every on-screen record, because the
+    /// screen filter culls the off-display phantom backing surfaces Chrome/Ghostty keep. On —
+    /// set exactly when `screenBounds` is `nil` (spanning all displays) — there is no screen
+    /// filter to fall back on, so an on-screen record is kept only if it is on a managed Space;
+    /// a phantom surface is not. Without this, "all screens" surfaced those phantoms in the wheel.
+    let validatesOnscreen: Bool
 
     init(
         screenBounds: CGRect?,
         allSpaces: Bool,
         includeMinimized: Bool = false,
-        includeHidden: Bool = false
+        includeHidden: Bool = false,
+        validatesOnscreen: Bool = false
     ) {
         self.screenBounds = screenBounds
         self.allSpaces = allSpaces
         self.includeMinimized = includeMinimized
         self.includeHidden = includeHidden
+        self.validatesOnscreen = validatesOnscreen
     }
 
     /// Every display, current Space only — the unscoped basis (the old `onScreen: nil`,
@@ -96,7 +105,10 @@ struct CollectionPreferences: Equatable, Sendable {
     func appsScope(forDisplay display: CGRect?) -> CollectionScope {
         CollectionScope(
             screenBounds: appsAllScreens ? nil : display, allSpaces: appsAllSpaces,
-            includeMinimized: includeMinimized, includeHidden: includeHidden
+            includeMinimized: includeMinimized, includeHidden: includeHidden,
+            // Spanning all screens removes the screen filter that otherwise culls off-display
+            // phantoms, so on-screen records must be validated as real windows (Bringr-93j.60).
+            validatesOnscreen: appsAllScreens
         )
     }
 
@@ -106,7 +118,8 @@ struct CollectionPreferences: Equatable, Sendable {
     func windowsScope(forDisplay display: CGRect?) -> CollectionScope {
         CollectionScope(
             screenBounds: windowsAllScreens ? nil : display, allSpaces: windowsAllSpaces,
-            includeMinimized: includeMinimized, includeHidden: includeHidden
+            includeMinimized: includeMinimized, includeHidden: includeHidden,
+            validatesOnscreen: windowsAllScreens
         )
     }
 

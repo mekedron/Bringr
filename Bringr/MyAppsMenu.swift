@@ -121,6 +121,7 @@ struct MyAppsMenu: MenuDefinition {
                 let live = enumerator.enumerate(
                     onScreen: appsScope.screenBounds, allSpaces: appsScope.allSpaces,
                     includeMinimized: appsScope.includeMinimized, includeHidden: appsScope.includeHidden,
+                    validatesOnscreen: appsScope.validatesOnscreen,
                     recordingRecency: true
                 )
                 // Keep the manual order (the default), or let the active Apps sort order

@@ -77,6 +77,21 @@ final class CollectionScopeTests: XCTestCase {
         // "all screens" is expressed by dropping the bound even though a display was passed.
         XCTAssertNil(prefs.appsScope(forDisplay: display).screenBounds)
         XCTAssertNil(prefs.windowsScope(forDisplay: display).screenBounds)
+        // With no screen filter to cull off-display phantoms, each level must validate its
+        // on-screen records (Bringr-93j.60).
+        XCTAssertTrue(prefs.appsScope(forDisplay: display).validatesOnscreen)
+        XCTAssertTrue(prefs.windowsScope(forDisplay: display).validatesOnscreen)
+    }
+
+    func testCurrentScreenScopeDoesNotValidateOnscreen() {
+        // Screen-scoped collection has the screen filter to cull off-display phantoms, so it
+        // trusts on-screen records and skips the managed-Space check (Bringr-93j.60).
+        let prefs = CollectionPreferences(
+            appsAllScreens: false, appsAllSpaces: false,
+            windowsAllScreens: false, windowsAllSpaces: false
+        )
+        XCTAssertFalse(prefs.appsScope(forDisplay: display).validatesOnscreen)
+        XCTAssertFalse(prefs.windowsScope(forDisplay: display).validatesOnscreen)
     }
 
     func testAllSpacesFlagPassesThroughVerbatim() {
@@ -123,6 +138,7 @@ final class CollectionScopeTests: XCTestCase {
         XCTAssertFalse(CollectionScope.allScreensCurrentSpace.allSpaces)
         XCTAssertFalse(CollectionScope.allScreensCurrentSpace.includeMinimized)
         XCTAssertFalse(CollectionScope.allScreensCurrentSpace.includeHidden)
+        XCTAssertFalse(CollectionScope.allScreensCurrentSpace.validatesOnscreen)
     }
 
     private func ephemeralDefaults() -> UserDefaults {

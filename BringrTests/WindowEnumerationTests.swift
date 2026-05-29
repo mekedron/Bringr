@@ -303,7 +303,8 @@ final class WindowEnumerationTests: XCTestCase {
         x: CGFloat = 0,
         y: CGFloat = 0,
         width: CGFloat = 800,
-        height: CGFloat = 600
+        height: CGFloat = 600,
+        isManagedWindow: Bool = false
     ) -> RawWindow {
         RawWindow(
             windowNumber: number,
@@ -312,7 +313,8 @@ final class WindowEnumerationTests: XCTestCase {
             title: title,
             layer: layer,
             alpha: alpha,
-            bounds: CGRect(x: x, y: y, width: width, height: height)
+            bounds: CGRect(x: x, y: y, width: width, height: height),
+            isManagedWindow: isManagedWindow
         )
     }
 }
@@ -331,6 +333,9 @@ final class FakeWindowEnumerationSource: WindowEnumerationSource {
     /// The `includingOffscreen` of the most recent call, so a test can assert the enumerator
     /// broadened the query when a Space/minimized/hidden flag was set.
     private(set) var lastIncludedOffscreen: Bool?
+    /// The `validatingOnscreen` of the most recent call, so a test can assert the enumerator
+    /// asked the source to validate on-screen records when spanning all screens (Bringr-93j.60).
+    private(set) var lastValidatingOnscreen: Bool?
     /// How many times `rawWindows` was queried, split by mode, so a test can assert the
     /// per-summon broadened cache (Bringr-93j.53) reuses one query across the apps ring and
     /// the windows sub-wheel re-reads instead of re-hitting the source on every hover.
@@ -343,8 +348,9 @@ final class FakeWindowEnumerationSource: WindowEnumerationSource {
         self.offscreenWindows = offscreenWindows
     }
 
-    func rawWindows(includingOffscreen: Bool) -> [RawWindow] {
+    func rawWindows(includingOffscreen: Bool, validatingOnscreen: Bool) -> [RawWindow] {
         lastIncludedOffscreen = includingOffscreen
+        lastValidatingOnscreen = validatingOnscreen
         if includingOffscreen {
             broadenedCallCount += 1
             if let offscreenWindows { return offscreenWindows }
