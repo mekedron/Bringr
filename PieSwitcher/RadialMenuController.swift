@@ -41,11 +41,16 @@ final class RadialMenuController: ObservableObject {
 
     private let registry: MenuRegistry
     let navigator: RadialNavigator
-    private let window: RadialMenuWindow
+    /// Internal (not private) so the cursor → offset helpers can live in
+    /// `RadialMenuController+Cursor.swift`, where `offset(forGlobalCursor:)` reads its frame.
+    let window: RadialMenuWindow
     var machine = InteractionStateMachine()
     /// Reads the persisted interaction mode at summon time so a Preferences change
     /// takes effect on the next summon without a relaunch (AC3 of US-009).
     private let modeProvider: () -> InteractionMode
+    /// Reads the persisted click-to-activate setting at summon time, mirroring `modeProvider`,
+    /// so a Preferences change applies on the next summon without a relaunch (Bringr-93j.76).
+    private let clickToActivateProvider: () -> Bool
     /// Reads the persisted appearance at summon time, mirroring `modeProvider`, so a
     /// Preferences appearance change applies on the next summon without a relaunch
     /// (US-014 AC2).
@@ -95,6 +100,7 @@ final class RadialMenuController: ObservableObject {
         geometry: RadialGeometry = .default,
         windowControl: WindowController? = nil,
         modeProvider: @escaping () -> InteractionMode = { InteractionMode.current() },
+        clickToActivateProvider: @escaping () -> Bool = { ClickToActivate.isEnabled() },
         appearanceProvider: @escaping () -> RadialAppearance = { RadialAppearance.current() },
         strategyProvider: @escaping () -> RevealStrategy = { RevealStrategy.current() },
         cursorLockProvider: @escaping () -> Bool = { CursorLock.isEnabled() },
@@ -105,6 +111,7 @@ final class RadialMenuController: ObservableObject {
     ) {
         self.registry = registry
         self.modeProvider = modeProvider
+        self.clickToActivateProvider = clickToActivateProvider
         self.appearanceProvider = appearanceProvider
         self.strategyProvider = strategyProvider
         self.cursorLockProvider = cursorLockProvider
@@ -167,7 +174,12 @@ final class RadialMenuController: ObservableObject {
     }
 
     private func press(trigger: MenuTrigger, mode: InteractionMode, at cursor: CGPoint) {
-        if !machine.isOpen { machine.mode = mode }
+        // Resolve the interaction settings fresh while closed, so a Preferences change applies
+        // on the next open rather than mid-session (Bringr-93j.76 mirrors the US-009 mode read).
+        if !machine.isOpen {
+            machine.mode = mode
+            machine.clickToActivate = clickToActivateProvider()
+        }
         switch machine.handle(.triggerPressed) {
         case .open: summon(trigger: trigger, at: cursor)
         case .cancel: cancelInteraction()
@@ -204,6 +216,8 @@ final class RadialMenuController: ObservableObject {
         // geometry, so they stay in lock-step at any size (US-014 AC3).
         appearance = appearanceProvider()
         navigator.setBaseGeometry(appearance.geometry)
+        // Apply the persisted skip-single-window-level option for this summon (Bringr-93j.75).
+        navigator.setSkipSingleWindowLevel(appearance.skipSingleWindowLevel)
         // Apply the persisted reveal strategy for this summon too (US-013 AC4), so a
         // Preferences change takes effect on the next open without a relaunch.
         navigator.setRevealStrategy(strategyProvider())
@@ -372,7 +386,7 @@ final class RadialMenuController: ObservableObject {
         if !isRetry { subWheelRetriesLeft = 6 }
         guard isVisible, subWheelRetriesLeft > 0,
               case .slice(level: 0, _) = navigator.hovered,
-              !navigator.hasWindowSubWheel else { return }
+              !navigator.hasWindowSubWheel, !navigator.subWheelSuppressed else { return }
         subWheelRetriesLeft -= 1
         let work = DispatchWorkItem { [weak self] in
             guard let self, self.isVisible else { return }
@@ -380,21 +394,5 @@ final class RadialMenuController: ObservableObject {
         }
         subWheelRetry = work
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.03, execute: work)
-    }
-
-    // MARK: - Cursor → target resolution
-
-    /// Offset from the ring centre for a global (AppKit y-up) cursor, flipped into
-    /// the layout's y-down space.
-    private func offset(forGlobalCursor cursor: CGPoint) -> CGPoint {
-        let frame = window.frame
-        return CGPoint(x: cursor.x - frame.midX, y: frame.midY - cursor.y)
-    }
-
-    /// Offset from the ring centre for a point in the overlay view's local (y-down,
-    /// top-left origin) space.
-    private func offset(forLocalPoint local: CGPoint) -> CGPoint {
-        let center = overallDiameter / 2
-        return CGPoint(x: local.x - center, y: local.y - center)
     }
 }

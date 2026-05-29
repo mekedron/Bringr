@@ -40,6 +40,34 @@ enum InteractionMode: String, CaseIterable, Sendable {
     }
 }
 
+// MARK: - Click-to-activate
+
+/// Optional click-to-activate behaviour (Bringr-93j.76). When enabled, clicking an app or
+/// window slice selects it and closes the wheel even in `holdToSelect` mode — so the user can
+/// either release the held trigger to commit the hovered item (as before) or click an item
+/// directly. Most useful with the keyboard-shortcut trigger, where the mouse is free to click
+/// while the modifier is held; with the mouse chord the buttons are busy being held. In
+/// `clickToStay` a click already commits, so the setting only changes `holdToSelect`.
+///
+/// Off by default — an opt-in setting, so unless the user turns it on selection works exactly
+/// as before. A caseless namespace for the read helper, mirroring `HideOnCommit`/`CursorLock`;
+/// read fresh at each summon so a Preferences change applies on the next open without a relaunch.
+enum ClickToActivate {
+    /// `UserDefaults` key backing the toggle. Single source of truth shared by the
+    /// Preferences `@AppStorage` and `isEnabled(from:)` so the two cannot drift.
+    static let defaultsKey = "clickToActivate"
+
+    /// Default: OFF. Because the default is false, `bool(forKey:)` — which returns `false` for
+    /// an absent key — already yields the intended default, so no explicit unset check is needed
+    /// (mirroring `HideOnCommit`/`CursorLock`).
+    static let `default` = false
+
+    /// Whether click-to-activate is enabled. Read fresh at each summon.
+    static func isEnabled(from defaults: UserDefaults = .standard) -> Bool {
+        defaults.bool(forKey: defaultsKey)
+    }
+}
+
 // MARK: - State-machine vocabulary
 
 /// What the cursor is over at the moment of a commit gesture: a specific slice, or
@@ -91,6 +119,13 @@ struct InteractionStateMachine {
     /// effect on the next open rather than mid-session (AC3).
     var mode: InteractionMode
 
+    /// Whether a click commits even in `holdToSelect` (Bringr-93j.76). Off (the default)
+    /// keeps the original behaviour — a click commits only in `clickToStay`. On, a click on a
+    /// slice selects it and a click off any slice cancels, in *either* mode, so the user can
+    /// click an item to activate it instead of releasing the held trigger. Set per-summon by
+    /// the controller, like `mode`, so a Preferences change applies on the next open.
+    var clickToActivate = false
+
     /// Whether the menu is currently open. Read-only to callers; only `handle`
     /// transitions it, so the machine is the single source of truth.
     private(set) var isOpen = false
@@ -111,8 +146,11 @@ struct InteractionStateMachine {
             return commit(for: target)
         case .click(let target):
             guard isOpen else { return .none }
-            // Click-to-stay commits on a click; hold-to-select only ever commits on release.
-            guard mode == .clickToStay else { return .none }
+            // Click-to-stay always commits on a click. Hold-to-select commits on release, not on
+            // a click — unless click-to-activate is on (Bringr-93j.76), which lets a click pick an
+            // item (or cancel off a slice) in either mode, so the user can click instead of
+            // releasing the held trigger.
+            guard mode == .clickToStay || clickToActivate else { return .none }
             return commit(for: target)
         case .escape, .triggerLost:
             // Both force a cancel when open: Esc, and any abrupt loss of the summon

@@ -47,6 +47,12 @@ struct RadialAppearance: Equatable, Sendable {
     /// which keeps them legible over the translucent ring on busy backgrounds. Tunable
     /// independently of the glass wheel's own shadow (Bringr-93j.66).
     var contentShadowOpacity: Double = defaultContentShadowOpacity
+    /// Whether an app with no windows or only a single window skips the windows
+    /// sub-wheel (Bringr-93j.75): with it on, hovering such an app opens no second level
+    /// and committing the app acts on its one window directly, so there is no pointless
+    /// extra ring when there is nothing to choose between. Apps with two or more windows
+    /// still open the sub-wheel.
+    var skipSingleWindowLevel: Bool = defaultSkipSingleWindowLevel
 
     static let defaultOuterRadius: CGFloat = RadialGeometry.default.outerRadius
     /// Low by default so the genuine Liquid Glass material reads as glass at rest
@@ -65,6 +71,10 @@ struct RadialAppearance: Equatable, Sendable {
     static let defaultGlassShadowOpacity = 0.3
     /// Matches the shipped label shadow, so the default look is unchanged.
     static let defaultContentShadowOpacity = 0.55
+    /// Off by default — an opt-in setting, so the wheel ships opening the windows
+    /// sub-wheel for every app exactly as before; the user turns it on to collapse the
+    /// single-window case.
+    static let defaultSkipSingleWindowLevel = false
 
     static let `default` = RadialAppearance(
         outerRadius: defaultOuterRadius,
@@ -73,7 +83,8 @@ struct RadialAppearance: Equatable, Sendable {
         usesLiquidGlass: defaultUsesLiquidGlass,
         innerRadiusPadding: defaultInnerRadiusPadding,
         glassShadowOpacity: defaultGlassShadowOpacity,
-        contentShadowOpacity: defaultContentShadowOpacity
+        contentShadowOpacity: defaultContentShadowOpacity,
+        skipSingleWindowLevel: defaultSkipSingleWindowLevel
     )
 
     /// Slider bounds shared by Preferences and the clamp on read, so the UI can
@@ -97,6 +108,7 @@ struct RadialAppearance: Equatable, Sendable {
     static let innerPaddingDefaultsKey = "appearance.innerRadiusPadding"
     static let glassShadowDefaultsKey = "appearance.glassShadowOpacity"
     static let contentShadowDefaultsKey = "appearance.contentShadowOpacity"
+    static let skipSingleWindowLevelDefaultsKey = "appearance.skipSingleWindowLevel"
 
     /// Dead-zone-to-outer-radius ratio, taken from the shipped default so scaling
     /// the wheel preserves the original proportions.
@@ -149,6 +161,9 @@ struct RadialAppearance: Equatable, Sendable {
         }
         if defaults.object(forKey: contentShadowDefaultsKey) != nil {
             appearance.contentShadowOpacity = clampedShadowOpacity(defaults.double(forKey: contentShadowDefaultsKey))
+        }
+        if defaults.object(forKey: skipSingleWindowLevelDefaultsKey) != nil {
+            appearance.skipSingleWindowLevel = defaults.bool(forKey: skipSingleWindowLevelDefaultsKey)
         }
         return appearance
     }

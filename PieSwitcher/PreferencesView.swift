@@ -185,6 +185,7 @@ struct PreferencesView: View {
 /// change here applies on the next open without a relaunch.
 private struct InteractionSettings: View {
     @AppStorage(InteractionMode.defaultsKey) private var modeRaw = InteractionMode.default.rawValue
+    @AppStorage(ClickToActivate.defaultsKey) private var clickToActivate = ClickToActivate.default
     @AppStorage(CursorLock.defaultsKey) private var cursorLockEnabled = CursorLock.default
 
     var body: some View {
@@ -198,6 +199,17 @@ private struct InteractionSettings: View {
                 .pickerStyle(.radioGroup)
 
                 Text(modeHelp)
+                    .font(.callout)
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+
+            VStack(alignment: .leading, spacing: 8) {
+                Toggle("Click an item to choose it", isOn: $clickToActivate)
+
+                Text("Also let a click on an app or window pick it and close the wheel. Handy "
+                     + "while holding the keyboard shortcut: click to choose without releasing. "
+                     + "You can still release the trigger to choose the hovered item.")
                     .font(.callout)
                     .foregroundStyle(.secondary)
                     .fixedSize(horizontal: false, vertical: true)

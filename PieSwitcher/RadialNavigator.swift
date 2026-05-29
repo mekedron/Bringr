@@ -81,6 +81,10 @@ final class RadialNavigator {
     /// Whether the cursor-lock setting is on for this summon. Pushed in before `open`
     /// from the persisted setting, so a Preferences change applies on the next open.
     private var cursorLockEnabled = false
+    /// Whether to skip the windows sub-wheel for a zero/one-window app this summon
+    /// (Bringr-93j.75). Pushed in before `open` from the persisted appearance, so a
+    /// Preferences change applies on the next open.
+    private var skipSingleWindowLevel = false
 
     let windowControl: WindowController
     /// Starts a curated app that has no window to focus (Bringr-93j.39), behind a seam
@@ -89,8 +93,10 @@ final class RadialNavigator {
     private let store: LastSelectionStore
     /// Base ring size for the apps ring. Re-set per summon from the persisted
     /// appearance (US-014), so a Preferences size change applies on the next open.
-    private var baseGeometry: RadialGeometry
-    private let maxDepth: Int
+    /// Internal (not private) so the geometry helpers can live in `+Region`.
+    var baseGeometry: RadialGeometry
+    /// Internal (not private) so `overallDiameter` can live in `+Region`.
+    let maxDepth: Int
 
     init(
         windowControl: WindowController,
@@ -107,20 +113,6 @@ final class RadialNavigator {
     }
 
     // MARK: - Concentric geometry
-
-    /// Ring band for concentric `level`: each sits just outside the previous, reusing the base
-    /// thickness, so level 0 matches the original single ring and the rings touch (no gap).
-    func ringGeometry(forLevel level: Int) -> RadialGeometry {
-        let thickness = baseGeometry.outerRadius - baseGeometry.innerRadius
-        let inner = baseGeometry.innerRadius + CGFloat(level) * thickness
-        return RadialGeometry(innerRadius: inner, outerRadius: inner + thickness)
-    }
-
-    /// Side length of the square overlay needed to fit every concentric ring at the
-    /// current base size and full depth. The controller resizes the pre-warmed
-    /// window to this on summon when the appearance changed (US-014) — a resize of
-    /// the reused window, not an allocation, so the hot path stays cheap (FR-14).
-    var overallDiameter: CGFloat { 2 * ringGeometry(forLevel: maxDepth - 1).outerRadius }
 
     /// Set the apps-ring base geometry for the next summon (US-014). Read fresh from
     /// the persisted appearance just before `open`, so a Preferences size change
@@ -153,6 +145,12 @@ final class RadialNavigator {
     func setCursorLockEnabled(_ enabled: Bool) {
         cursorLockEnabled = enabled
         if !enabled { cursorLockEngaged = false }
+    }
+
+    /// Enable or disable skipping the windows sub-wheel for zero/one-window apps for the
+    /// next summon (Bringr-93j.75), pushed in per summon like `setCursorLockEnabled`.
+    func setSkipSingleWindowLevel(_ enabled: Bool) {
+        skipSingleWindowLevel = enabled
     }
 
     // MARK: - Lifecycle
@@ -283,19 +281,31 @@ final class RadialNavigator {
     /// the pre-summon state. Pre-highlights the app's remembered window, if any
     /// still matches the freshly resolved sub-wheel. (AC4)
     private func expandApp(at index: Int) {
-        // Re-hovering the same app is a no-op only once its sub-wheel is populated. If
-        // the windows came back empty — the live scan can momentarily return nothing
-        // right after the reveal un-hides the app (Bringr-93j.31) — fall through so a
-        // later hover (or the controller's retry) rebuilds it once the scan settles.
-        // expandedAppIndex is still set on the empty pass, so a dead-zone collapse
-        // still restores the reveal.
-        guard !(expandedAppIndex == index && hasWindowSubWheel), let appsRing = rings.first,
-              index >= 0, index < appsRing.nodes.count else { return }
+        // Re-hovering the same app is a no-op once its sub-wheel is populated, or once it
+        // is deliberately suppressed for a single-window app (Bringr-93j.75). If the windows
+        // came back empty — the live scan can momentarily return nothing right after the
+        // reveal un-hides the app (Bringr-93j.31) — fall through so a later hover (or the
+        // controller's retry) rebuilds it once the scan settles. expandedAppIndex is still
+        // set on the empty pass, so a dead-zone collapse still restores the reveal.
+        guard !(expandedAppIndex == index && (hasWindowSubWheel || subWheelSuppressed)),
+              let appsRing = rings.first, index >= 0, index < appsRing.nodes.count else { return }
         let appNode = appsRing.nodes[index]
         if let appID = appNode.representedApp {
             windowControl.revealApp(appID)
         }
         let windowNodes = appNode.resolvedChildren()
+        // Skip the windows sub-wheel for a single-window app when the option is on
+        // (Bringr-93j.75): there is nothing to choose between, so the app stays revealed and
+        // committing it acts on its one window directly. Exactly one window is settled state,
+        // so suppress permanently; zero windows falls through to the empty-ring path, which
+        // the post-reveal scan race (Bringr-93j.31) retries into a real sub-wheel.
+        if skipSingleWindowLevel, windowNodes.count == 1 {
+            rings = [appsRing]
+            expandedAppIndex = index
+            focusedWindowIndex = nil
+            prehighlighted = .none
+            return
+        }
         let appCount = appsRing.nodes.count
         // Overflow (US-016 fisheye) only when there are genuinely more windows than
         // app-arcs to lay them on; with a single app there is no context arc, so the
@@ -383,18 +393,5 @@ final class RadialNavigator {
         focusedWindowIndex = nil
         prehighlighted = .none
         cursorLockEngaged = false
-    }
-
-    /// The app node currently expanded on the apps ring, if any.
-    private var expandedAppNode: MenuNode? {
-        guard let index = expandedAppIndex, let appsRing = rings.first,
-              index >= 0, index < appsRing.nodes.count else { return nil }
-        return appsRing.nodes[index]
-    }
-
-    /// The app currently expanded on the apps ring, if any — the scope window
-    /// isolation acts within.
-    var expandedAppID: AppID? {
-        expandedAppNode?.representedApp
     }
 }

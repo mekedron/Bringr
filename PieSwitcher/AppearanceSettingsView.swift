@@ -23,6 +23,8 @@ struct AppearanceSettings: View {
     private var glassShadowOpacity = RadialAppearance.defaultGlassShadowOpacity
     @AppStorage(RadialAppearance.contentShadowDefaultsKey)
     private var contentShadowOpacity = RadialAppearance.defaultContentShadowOpacity
+    @AppStorage(RadialAppearance.skipSingleWindowLevelDefaultsKey)
+    private var skipSingleWindowLevel = RadialAppearance.defaultSkipSingleWindowLevel
 
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
@@ -72,6 +74,16 @@ struct AppearanceSettings: View {
                 Toggle("Liquid Glass effect", isOn: $usesLiquidGlass)
                 Text("Render the wheel with the translucent Liquid Glass material (macOS 26 "
                      + "and later). Turn it off for a plain frosted look.")
+                    .font(.callout)
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+
+            VStack(alignment: .leading, spacing: 2) {
+                Toggle("Skip the windows ring for single-window apps", isOn: $skipSingleWindowLevel)
+                Text("When an app has just one window (or none), don't open a second ring — "
+                     + "choosing the app goes straight to its window. Apps with two or more "
+                     + "windows still open the ring.")
                     .font(.callout)
                     .foregroundStyle(.secondary)
                     .fixedSize(horizontal: false, vertical: true)
