@@ -65,9 +65,11 @@ final class WindowController {
     /// Whether a capture/restore session is currently open.
     var hasActiveSession: Bool { session != nil }
 
-    /// Where a window is parked at the window level — instant, unlike AX minimize (Bringr-93j.24).
-    /// `x` is off-screen-right so the window fully hides; `y` stays on-screen so macOS keeps the
-    /// title bar reachable and never clamps the height off the bottom (Bringr-93j.28/.32).
+    /// Nominal off-screen park sentinel: the in-memory `FakeWindowSystem` parks here so
+    /// tests can assert "this window is parked". The live system parks via
+    /// `WindowControlling.park`, which preserves the window's Y and picks the side whose
+    /// extreme display is tallest, so a parked window is never re-homed onto a shorter
+    /// display and height-clamped (Bringr-93j.81); `x` here is still far off every display.
     static let offScreenPoint = CGPoint(x: 50_000, y: 100)
 
     // MARK: - Primitives
@@ -169,7 +171,7 @@ final class WindowController {
         restoreCapturedFrame(of: target)
         for window in system.windows(of: target.app)
         where window != target && !system.isMinimized(window) {
-            system.setPosition(window, Self.offScreenPoint)
+            system.park(window)
         }
         system.raise(target)
     }

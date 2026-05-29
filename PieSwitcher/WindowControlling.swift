@@ -1,3 +1,4 @@
+import CoreGraphics
 import Foundation
 
 /// Identifies a running application by its process id.
@@ -61,6 +62,13 @@ protocol WindowControlling {
     /// unlike AX minimize's slow genie animation — the window-level hide-others reveal
     /// parks the app's other windows off-screen with this instead (Bringr-93j.24).
     func setPosition(_ window: WindowID, _ point: CGPoint)
+    /// Park `window` off-screen at the window level (the hide-others reveal's fast,
+    /// genie-free hide — Bringr-93j.24). Unlike a plain `setPosition`, the live system
+    /// moves the window horizontally toward the side whose extreme display is tallest and
+    /// keeps its Y, so macOS can't re-home it onto a shorter/offset display and clamp its
+    /// height (Bringr-93j.81 — the per-hover ~250px shrink). `restore` moves it back via
+    /// `setPosition`/`setSize` to its captured frame.
+    func park(_ window: WindowID)
 
     /// The window's size, or `nil`. Captured with `position(of:)` so a parked window's
     /// exact frame can be restored: macOS clamps a window's height when it's moved off
@@ -69,4 +77,37 @@ protocol WindowControlling {
     /// Set `window`'s size (anchored at its top-left), undoing that off-screen height
     /// clamp on restore (Bringr-93j.28).
     func setSize(_ window: WindowID, _ size: CGSize)
+}
+
+/// Decides *where* the window-level hide-others reveal parks a window off-screen.
+///
+/// macOS refuses to let a window's title bar leave every display: park it far to one
+/// side and the window server slides it back until a sliver overlaps the *extreme*
+/// display in that direction, then clamps its height to that display's visible height.
+/// Parking far-right therefore re-homed a tall window onto the rightmost (often the
+/// laptop, shorter and vertically offset) display and shrank it — and once clamped the
+/// height never fully restored, so each hover lost ~250px (Bringr-93j.81).
+///
+/// The fix is to choose the side whose extreme display is *tallest*. On the common
+/// one/two-display setups the tallest extreme is the tallest display overall, so a tall
+/// window lands on a display at least as tall as itself and is never clamped. The caller
+/// keeps the window's Y, so its vertical extent is unchanged on the target display too.
+enum WindowParkGeometry {
+    /// How far beyond a display's outer edge to push a parked window; macOS slides it
+    /// back to a title-bar sliver regardless, so any value clear of the desktop works.
+    static let offScreenInset: CGFloat = 50_000
+
+    /// The off-screen X to park at, given the displays' frames (AppKit or AX — only the
+    /// space-agnostic X-extents and heights are read). Falls back to a far-right value
+    /// when no displays are reported.
+    static func parkedX(screenFrames: [CGRect]) -> CGFloat {
+        guard let leftMost = screenFrames.min(by: { $0.minX < $1.minX }),
+              let rightMost = screenFrames.max(by: { $0.maxX < $1.maxX }) else {
+            return offScreenInset
+        }
+        if leftMost.height >= rightMost.height {
+            return leftMost.minX - offScreenInset
+        }
+        return rightMost.maxX + offScreenInset
+    }
 }

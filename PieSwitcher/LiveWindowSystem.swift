@@ -149,6 +149,16 @@ final class LiveWindowSystem: WindowControlling {
         logAXFailure(result, operation: "set position", window: window)
     }
 
+    func park(_ window: WindowID) {
+        guard let element = cachedElement(for: window, operation: "park") else { return }
+        // Keep the window's Y so its vertical extent is unchanged, and push X toward the
+        // tallest extreme display so macOS re-homes it onto a display at least as tall as
+        // itself — never clamping the height (Bringr-93j.81).
+        let currentY = axPoint(element, kAXPositionAttribute)?.y ?? 0
+        let parkX = WindowParkGeometry.parkedX(screenFrames: NSScreen.screens.map(\.frame))
+        setPosition(window, CGPoint(x: parkX, y: currentY))
+    }
+
     func size(of window: WindowID) -> CGSize? {
         guard let element = elementCache[window] else { return nil }
         // Width/height are space-agnostic, so no flip is needed (unlike `frame(of:)`).

@@ -159,6 +159,14 @@ final class FakeWindowSystem: WindowControlling {
         windowState(window)?.position = point
     }
 
+    /// The in-memory model has no real displays to re-home a window onto, so park is just a
+    /// move to the nominal sentinel `WindowController.offScreenPoint` (logged as `.setPosition`,
+    /// like the move it replaced). The live system's screen-aware, height-clamp-avoiding park
+    /// (Bringr-93j.81) is exercised by `WindowParkGeometry` tests instead.
+    func park(_ window: WindowID) {
+        setPosition(window, WindowController.offScreenPoint)
+    }
+
     func size(of window: WindowID) -> CGSize? {
         windowState(window)?.size
     }
