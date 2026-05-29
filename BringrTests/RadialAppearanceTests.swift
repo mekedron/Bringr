@@ -59,6 +59,33 @@ final class RadialAppearanceTests: XCTestCase {
         XCTAssertEqual(
             appearance.innerRadiusPadding, RadialAppearance.defaultInnerRadiusPadding, accuracy: accuracy
         )
+        XCTAssertEqual(
+            appearance.glassShadowOpacity, RadialAppearance.defaultGlassShadowOpacity, accuracy: opacityAccuracy
+        )
+        XCTAssertEqual(
+            appearance.contentShadowOpacity, RadialAppearance.defaultContentShadowOpacity, accuracy: opacityAccuracy
+        )
+    }
+
+    // MARK: - Shadow opacities (Bringr-93j.66)
+
+    func testShadowOpacitiesRoundTrip() {
+        let defaults = makeDefaults()
+        defaults.set(0.7, forKey: RadialAppearance.glassShadowDefaultsKey)
+        defaults.set(0.2, forKey: RadialAppearance.contentShadowDefaultsKey)
+
+        let appearance = RadialAppearance.current(from: defaults)
+        XCTAssertEqual(appearance.glassShadowOpacity, 0.7, accuracy: opacityAccuracy)
+        XCTAssertEqual(appearance.contentShadowOpacity, 0.2, accuracy: opacityAccuracy)
+    }
+
+    func testShadowOpacitiesAreClampedIntoRange() {
+        let low = RadialAppearance.shadowOpacityRange.lowerBound
+        let high = RadialAppearance.shadowOpacityRange.upperBound
+        XCTAssertEqual(readingGlassShadow(-1), low, accuracy: opacityAccuracy)
+        XCTAssertEqual(readingGlassShadow(9), high, accuracy: opacityAccuracy)
+        XCTAssertEqual(readingContentShadow(-1), low, accuracy: opacityAccuracy)
+        XCTAssertEqual(readingContentShadow(9), high, accuracy: opacityAccuracy)
     }
 
     // MARK: - Clamping a stray value (AC3 — never a degenerate ring)
@@ -207,6 +234,18 @@ final class RadialAppearanceTests: XCTestCase {
         let defaults = makeDefaults()
         defaults.set(value, forKey: RadialAppearance.opacityDefaultsKey)
         return RadialAppearance.current(from: defaults).fillOpacity
+    }
+
+    private func readingGlassShadow(_ value: Double) -> Double {
+        let defaults = makeDefaults()
+        defaults.set(value, forKey: RadialAppearance.glassShadowDefaultsKey)
+        return RadialAppearance.current(from: defaults).glassShadowOpacity
+    }
+
+    private func readingContentShadow(_ value: Double) -> Double {
+        let defaults = makeDefaults()
+        defaults.set(value, forKey: RadialAppearance.contentShadowDefaultsKey)
+        return RadialAppearance.current(from: defaults).contentShadowOpacity
     }
 
     /// An isolated `UserDefaults` suite so persistence tests never touch the real

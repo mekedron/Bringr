@@ -53,7 +53,7 @@ struct RadialMenuView: View {
             usesLiquidGlass: controller.appearance.usesLiquidGlass
         )
         .frame(width: controller.overallDiameter, height: controller.overallDiameter)
-        .shadow(color: .black.opacity(0.3), radius: 12, y: 4)
+        .shadow(color: .black.opacity(controller.appearance.glassShadowOpacity), radius: 12, y: 4)
     }
 
     /// Layer 2 — per-slice separators and the hover / pre-highlight cue, above the
@@ -76,7 +76,11 @@ struct RadialMenuView: View {
     private var content: some View {
         ZStack {
             ForEach(controller.rings) { ring in
-                RadialRingContent(ring: ring, showsLabels: controller.appearance.showsLabels)
+                RadialRingContent(
+                    ring: ring,
+                    showsLabels: controller.appearance.showsLabels,
+                    shadowOpacity: controller.appearance.contentShadowOpacity
+                )
             }
         }
     }
@@ -187,15 +191,21 @@ struct RadialRingEmphasis: View {
 struct RadialRingContent: View {
     let ring: RadialRing
     let showsLabels: Bool
+    let shadowOpacity: Double
 
     var body: some View {
         ZStack {
             ForEach(Array(ring.nodes.enumerated()), id: \.element.id) { index, node in
-                RadialSliceLabel(node: node, index: index, showsLabels: showsLabels)
-                    .offset(
-                        x: ring.layout.sliceCenterOffset(at: index).x,
-                        y: ring.layout.sliceCenterOffset(at: index).y
-                    )
+                RadialSliceLabel(
+                    node: node,
+                    index: index,
+                    showsLabels: showsLabels,
+                    shadowOpacity: shadowOpacity
+                )
+                .offset(
+                    x: ring.layout.sliceCenterOffset(at: index).x,
+                    y: ring.layout.sliceCenterOffset(at: index).y
+                )
             }
         }
     }
@@ -257,6 +267,9 @@ struct RadialSliceLabel: View {
     /// When false (US-014 label-visibility off), the text title is hidden; the app
     /// icon and the window index number stay so slices remain identifiable.
     let showsLabels: Bool
+    /// Opacity of the shadow behind the icon and text (Bringr-93j.66), so the user can
+    /// strengthen it for legibility on busy backgrounds or remove it entirely.
+    let shadowOpacity: Double
 
     var body: some View {
         VStack(spacing: 4) {
@@ -281,7 +294,7 @@ struct RadialSliceLabel: View {
             }
         }
         .frame(maxWidth: 84)
-        .shadow(color: .black.opacity(0.55), radius: 2, y: 0.5)
+        .shadow(color: .black.opacity(shadowOpacity), radius: 2, y: 0.5)
     }
 
     @ViewBuilder
@@ -291,7 +304,7 @@ struct RadialSliceLabel: View {
                 .resizable()
                 .interpolation(.high)
                 .frame(width: 34, height: 34)
-                .shadow(color: .black.opacity(0.35), radius: 2.5, y: 1)
+                .shadow(color: .black.opacity(shadowOpacity), radius: 2.5, y: 1)
         } else {
             Image(systemName: "app.dashed")
                 .font(.system(size: 30))

@@ -39,6 +39,14 @@ struct RadialAppearance: Equatable, Sendable {
     /// is a usability knob: a larger outer radius widens each slice's outer arc, so
     /// there is more room to land on a slice and aiming is more forgiving.
     var innerRadiusPadding: CGFloat = defaultInnerRadiusPadding
+    /// Opacity (0–1) of the drop shadow cast by the whole glass wheel onto the desktop
+    /// behind it, which seats the wheel as a floating object. Tunable from off to fully
+    /// opaque (Bringr-93j.66); independent of the content shadow.
+    var glassShadowOpacity: Double = defaultGlassShadowOpacity
+    /// Opacity (0–1) of the shadow behind slice icons and labels (the content layer),
+    /// which keeps them legible over the translucent ring on busy backgrounds. Tunable
+    /// independently of the glass wheel's own shadow (Bringr-93j.66).
+    var contentShadowOpacity: Double = defaultContentShadowOpacity
 
     static let defaultOuterRadius: CGFloat = RadialGeometry.default.outerRadius
     /// Low by default so the genuine Liquid Glass material reads as glass at rest
@@ -52,13 +60,20 @@ struct RadialAppearance: Equatable, Sendable {
     /// Zero by default, so the wheel ships exactly where US-006 placed it; the user
     /// opts into pushing it further out.
     static let defaultInnerRadiusPadding: CGFloat = 0
+    /// Matches the shipped glass drop shadow, so the default look is unchanged; the user
+    /// dials it down to 0 (no shadow) or up to a fully opaque one.
+    static let defaultGlassShadowOpacity = 0.3
+    /// Matches the shipped label shadow, so the default look is unchanged.
+    static let defaultContentShadowOpacity = 0.55
 
     static let `default` = RadialAppearance(
         outerRadius: defaultOuterRadius,
         fillOpacity: defaultFillOpacity,
         showsLabels: defaultShowsLabels,
         usesLiquidGlass: defaultUsesLiquidGlass,
-        innerRadiusPadding: defaultInnerRadiusPadding
+        innerRadiusPadding: defaultInnerRadiusPadding,
+        glassShadowOpacity: defaultGlassShadowOpacity,
+        contentShadowOpacity: defaultContentShadowOpacity
     )
 
     /// Slider bounds shared by Preferences and the clamp on read, so the UI can
@@ -69,6 +84,9 @@ struct RadialAppearance: Equatable, Sendable {
     /// glass to heavily filled and visibly tunes how glassy the arc looks.
     static let opacityRange: ClosedRange<Double> = 0...1
     static let innerPaddingRange: ClosedRange<CGFloat> = 0...150
+    /// Both shadow opacities span fully transparent (`0`, no shadow) to fully opaque
+    /// (`1`), so each knob runs the shadow from off to its strongest.
+    static let shadowOpacityRange: ClosedRange<Double> = 0...1
 
     /// `UserDefaults` keys — the single source of truth shared by the Preferences
     /// `@AppStorage` bindings and `current(from:)` so the two cannot drift.
@@ -77,6 +95,8 @@ struct RadialAppearance: Equatable, Sendable {
     static let labelsDefaultsKey = "appearance.showsLabels"
     static let glassDefaultsKey = "appearance.usesLiquidGlass"
     static let innerPaddingDefaultsKey = "appearance.innerRadiusPadding"
+    static let glassShadowDefaultsKey = "appearance.glassShadowOpacity"
+    static let contentShadowDefaultsKey = "appearance.contentShadowOpacity"
 
     /// Dead-zone-to-outer-radius ratio, taken from the shipped default so scaling
     /// the wheel preserves the original proportions.
@@ -124,6 +144,12 @@ struct RadialAppearance: Equatable, Sendable {
             let stored = defaults.double(forKey: innerPaddingDefaultsKey)
             appearance.innerRadiusPadding = clampedInnerPadding(CGFloat(stored))
         }
+        if defaults.object(forKey: glassShadowDefaultsKey) != nil {
+            appearance.glassShadowOpacity = clampedShadowOpacity(defaults.double(forKey: glassShadowDefaultsKey))
+        }
+        if defaults.object(forKey: contentShadowDefaultsKey) != nil {
+            appearance.contentShadowOpacity = clampedShadowOpacity(defaults.double(forKey: contentShadowDefaultsKey))
+        }
         return appearance
     }
 
@@ -137,5 +163,9 @@ struct RadialAppearance: Equatable, Sendable {
 
     private static func clampedOpacity(_ value: Double) -> Double {
         min(max(value, opacityRange.lowerBound), opacityRange.upperBound)
+    }
+
+    private static func clampedShadowOpacity(_ value: Double) -> Double {
+        min(max(value, shadowOpacityRange.lowerBound), shadowOpacityRange.upperBound)
     }
 }
