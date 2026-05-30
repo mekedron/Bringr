@@ -29,10 +29,29 @@ final class MouseChordMonitor {
     /// Whether blocking mode is on, read fresh per event. ON = button events of a pursued
     /// method are buffered; OFF = events always pass through and the detector observes only.
     private let blockingProvider: () -> Bool
+    /// Whether lock mode is on, read fresh per event. ON = button events of a pursued
+    /// method are dropped outright (the focused app sees nothing); OFF = the blocking
+    /// behaviour above decides whether they replay or pass through (Bringr-93j.103).
+    /// Internal so the +Timers extension can read it for the threshold/lock drag path.
+    let lockProvider: () -> Bool
+    /// How far the cursor may drift, in points, before the in-progress pursuit is abandoned
+    /// (Bringr-93j.103). Read fresh per drag event so a Preferences change applies on the
+    /// next gesture. Internal for the same reason as `lockProvider`.
+    let moveThresholdProvider: () -> CGFloat
+    /// Fires when the hold-delay timer is armed, with the delay in seconds. The progress
+    /// indicator (Bringr-93j.103) uses it to start the on-cursor countdown.
+    let onProgressStart: (TimeInterval) -> Void
+    /// Fires when the hold-delay timer is cancelled or completes, so the progress indicator
+    /// can clear (Bringr-93j.103).
+    let onProgressEnd: () -> Void
 
     private var eventTap: CFMachPort?
     private var runLoopSource: CFRunLoopSource?
     var heldEvents: [CGEvent] = []
+    /// Screen-coordinate location of the first event in `heldEvents`, captured when the
+    /// buffer is first populated so a drag during pursuit can be measured against it for
+    /// the move-threshold check (Bringr-93j.103). `nil` when the buffer is empty.
+    var pressLocation: CGPoint?
     var pursuitTimer: Timer?
     var holdDelayTimer: Timer?
     /// The match that the hold-delay timer is currently armed for, so a late state change
@@ -58,15 +77,23 @@ final class MouseChordMonitor {
         methodsProvider: @escaping () -> Set<MouseActivationMethod> = { MouseActivationConfig.methods() },
         holdDelayProvider: @escaping () -> TimeInterval = { MouseActivationHoldDelay.current() },
         blockingProvider: @escaping () -> Bool = { MouseActivationConfig.blocking() },
+        lockProvider: @escaping () -> Bool = { MouseActivationConfig.lock() },
+        moveThresholdProvider: @escaping () -> CGFloat = { MouseActivationMoveThreshold.current() },
         onChord: @escaping () -> Void,
-        onChordReleased: @escaping () -> Void = {}
+        onChordReleased: @escaping () -> Void = {},
+        onProgressStart: @escaping (TimeInterval) -> Void = { _ in },
+        onProgressEnd: @escaping () -> Void = {}
     ) {
         self.detector = MouseChordDetector(pursuitTimeout: pursuitTimeout)
         self.methodsProvider = methodsProvider
         self.holdDelayProvider = holdDelayProvider
         self.blockingProvider = blockingProvider
+        self.lockProvider = lockProvider
+        self.moveThresholdProvider = moveThresholdProvider
         self.onChord = onChord
         self.onChordReleased = onChordReleased
+        self.onProgressStart = onProgressStart
+        self.onProgressEnd = onProgressEnd
     }
 
     /// Whether the tap is currently installed.
@@ -134,6 +161,7 @@ final class MouseChordMonitor {
         cancelPursuitTimer()
         cancelHoldDelayTimer()
         heldEvents.removeAll()
+        pressLocation = nil
         chordActive = false
         physicallyDown.removeAll()
         pendingMatch = nil
@@ -156,6 +184,7 @@ final class MouseChordMonitor {
         // methods mid-pursuit.
         if methods.isEmpty {
             if !heldEvents.isEmpty { replayHeldEvents() }
+            pressLocation = nil
             cancelPursuitTimer()
             cancelHoldDelayTimer()
             pendingMatch = nil
@@ -200,27 +229,18 @@ final class MouseChordMonitor {
         return result
     }
 
-    /// A drag with a button held while we are still waiting for a chord partner is plainly
-    /// a drag, not a chord — release the buffered press at once so the focused app sees the
-    /// drag start without the threshold-long stall that was causing system-wide drag-start
-    /// stutter (Bringr-93j.94). Append the current drag to the buffer so the replay preserves
-    /// down→drag order. The CRITICAL constraint of Bringr-93j.96 means this short-circuit also
-    /// covers middle/side buttons via `.otherMouseDragged`.
-    private func handleDrag(_ event: CGEvent) -> Unmanaged<CGEvent>? {
-        guard detector.motionDetected() else { return Unmanaged.passUnretained(event) }
-        cancelHoldDelayTimer()
-        pendingMatch = nil
-        heldEvents.append(event)
-        replayHeldEvents()
-        return nil
-    }
-
     private func apply(
         _ reaction: MouseChordReaction,
         to event: CGEvent,
         blocking: Bool,
         holdDelay: TimeInterval
     ) -> Unmanaged<CGEvent>? {
+        // Lock implies blocking (eating the click outright is strictly stronger than deferring
+        // it). The user can have either off independently, but Lock on with Blocking off would
+        // leak presses to the focused app for an instant before the lock kicks in — which is
+        // not what "lock" means. Treating Lock as forcing the blocking path keeps the live
+        // event handling consistent (Bringr-93j.103).
+        let lock = lockProvider()
         // In non-blocking mode every event passes through unchanged, with one exception:
         // the chord-completing press itself. summon() installs a global dismiss monitor
         // synchronously before this callback returns, so if the press were dispatched it
@@ -228,20 +248,23 @@ final class MouseChordMonitor {
         // wheel a beat after it opened (Bringr-93j.99 — the L+R activation regression
         // introduced when blocking defaulted to OFF). Consume just that one press; the
         // pursuit presses still pass through, which is non-blocking's whole promise.
-        if !blocking {
+        if !blocking && !lock {
             applySideEffects(reaction, holdDelay: holdDelay)
             if reaction == .summon { return nil }
             return Unmanaged.passUnretained(event)
         }
-        return applyBlocking(reaction, event: event, holdDelay: holdDelay)
+        return applyBlocking(reaction, event: event, holdDelay: holdDelay, lock: lock)
     }
 
-    /// In blocking mode the detector's reactions drive what happens to the live event: pass
-    /// through, drop, or buffer it for a later replay/discard.
+    /// In blocking (or lock) mode the detector's reactions drive what happens to the live
+    /// event: pass through, drop, or buffer it for a later replay/discard. With Lock ON
+    /// (Bringr-93j.103) the actions that would replay buffered events drop them instead,
+    /// so the focused app sees nothing from the activation buttons for the whole gesture.
     private func applyBlocking(
         _ reaction: MouseChordReaction,
         event: CGEvent,
-        holdDelay: TimeInterval
+        holdDelay: TimeInterval,
+        lock: Bool
     ) -> Unmanaged<CGEvent>? {
         switch reaction {
         case .pass:
@@ -251,12 +274,14 @@ final class MouseChordMonitor {
             return nil
 
         case .hold:
+            if heldEvents.isEmpty { pressLocation = event.location }
             heldEvents.append(event)
             updateMatchTrackers(holdDelay: holdDelay)
             return nil
 
         case .releaseHeldThenHold:
-            replayHeldEvents()
+            if lock { heldEvents.removeAll() } else { replayHeldEvents() }
+            pressLocation = event.location
             heldEvents.append(event)
             updateMatchTrackers(holdDelay: holdDelay)
             return nil
@@ -264,6 +289,11 @@ final class MouseChordMonitor {
         case .releaseHeldWithCurrent:
             cancelHoldDelayTimer()
             pendingMatch = nil
+            if lock {
+                heldEvents.removeAll()
+                pressLocation = nil
+                return nil
+            }
             heldEvents.append(event)
             replayHeldEvents()
             return nil
@@ -273,6 +303,7 @@ final class MouseChordMonitor {
             cancelHoldDelayTimer()
             pendingMatch = nil
             heldEvents.removeAll()
+            pressLocation = nil
             chordActive = true
             onChord()
             return nil

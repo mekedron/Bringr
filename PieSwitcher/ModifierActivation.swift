@@ -173,6 +173,14 @@ final class ModifierHoldMonitor {
     private var delayGate = ModifierHoldDelayGate()
     private let onPress: () -> Void
     private let onRelease: () -> Void
+    /// Fires when the hold-delay timer is armed, with the delay in seconds. The progress
+    /// indicator (Bringr-93j.103) uses it to start the on-cursor countdown — same visual
+    /// treatment as the mouse hold delay, so the user sees the same fill animation regardless
+    /// of which trigger they're holding.
+    private let onProgressStart: (TimeInterval) -> Void
+    /// Fires when the hold-delay timer is cancelled or completes (Bringr-93j.103), so the
+    /// progress indicator clears.
+    private let onProgressEnd: () -> Void
     /// The armed combinations, read fresh on each modifier change so Preferences edits
     /// apply at once. Injected so tests can pass fixed combinations.
     private let armedProvider: () -> [ModifierCombination]
@@ -191,12 +199,16 @@ final class ModifierHoldMonitor {
         onPress: @escaping () -> Void,
         onRelease: @escaping () -> Void = {},
         armedProvider: @escaping () -> [ModifierCombination] = { ModifierActivation.armedCombinations() },
-        delayProvider: @escaping () -> TimeInterval = { ActivationHoldDelay.current() }
+        delayProvider: @escaping () -> TimeInterval = { ActivationHoldDelay.current() },
+        onProgressStart: @escaping (TimeInterval) -> Void = { _ in },
+        onProgressEnd: @escaping () -> Void = {}
     ) {
         self.onPress = onPress
         self.onRelease = onRelease
         self.armedProvider = armedProvider
         self.delayProvider = delayProvider
+        self.onProgressStart = onProgressStart
+        self.onProgressEnd = onProgressEnd
     }
 
     /// Whether the tap is currently installed.
@@ -286,6 +298,10 @@ final class ModifierHoldMonitor {
         }
         RunLoop.main.add(timer, forMode: .common)
         pressDelayTimer = timer
+        // Light up the cursor-progress circle (Bringr-93j.103) for the same delay the timer
+        // uses; the mouse-side monitor lights the same indicator the same way, so a held
+        // modifier feels identical to a held button visually.
+        onProgressStart(delay)
     }
 
     /// The delay elapsed (or was zero): deliver the press, but only if the hold survived —
@@ -311,7 +327,9 @@ final class ModifierHoldMonitor {
     }
 
     private func cancelPressDelayTimer() {
+        let wasArmed = pressDelayTimer != nil
         pressDelayTimer?.invalidate()
         pressDelayTimer = nil
+        if wasArmed { onProgressEnd() }
     }
 }

@@ -35,6 +35,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     /// under XCTest. Always installed but only consumes keys while the menu is open with the
     /// feature on.
     private var keyboardNavMonitor: KeyboardNavMonitor?
+    /// Pre-warmed cursor-progress indicator (Bringr-93j.103). Lit while either monitor's
+    /// hold-delay timer is running, so the user can see how much longer they need to hold
+    /// before the wheel opens. `nil` under XCTest.
+    private var holdProgress: HoldProgressController?
     private var trustCancellable: AnyCancellable?
 
     func applicationDidFinishLaunching(_ notification: Notification) {
@@ -45,6 +49,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
         permissions.startMonitoring()
         prewarmRadialMenu()
+        // Pre-warm the hold-progress indicator before the activation monitors so their
+        // initialisers can capture a non-nil reference for the progress callbacks.
+        holdProgress = HoldProgressController()
         startActivationMonitor()
         startModifierMonitor()
         startKeyboardNavMonitor()
@@ -86,6 +93,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             },
             onChordReleased: { [weak self] in
                 self?.radialMenu?.triggerReleased(at: NSEvent.mouseLocation)
+            },
+            onProgressStart: { [weak self] duration in
+                self?.holdProgress?.start(duration: duration)
+            },
+            onProgressEnd: { [weak self] in
+                self?.holdProgress?.cancel()
             }
         )
         activationMonitor = monitor
@@ -114,6 +127,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             },
             onRelease: { [weak self] in
                 self?.radialMenu?.triggerReleased(at: NSEvent.mouseLocation)
+            },
+            onProgressStart: { [weak self] duration in
+                self?.holdProgress?.start(duration: duration)
+            },
+            onProgressEnd: { [weak self] in
+                self?.holdProgress?.cancel()
             }
         )
         modifierMonitor = monitor

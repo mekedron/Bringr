@@ -160,6 +160,31 @@ final class MouseChordTests: XCTestCase {
         XCTAssertEqual(detector.handle(down(.right, at: 0.02), methods: leftRight), .hold)
     }
 
+    // MARK: - Bringr-93j.103: isPursuing peek
+
+    func testIsPursuingTracksHeldFirstState() {
+        // Non-mutating peek so the live monitor can decide whether to apply the move-threshold
+        // check on a drag, without committing to abandoning the pursuit (which `motionDetected`
+        // does). Stays false when idle, true while a press is buffered, false again after a
+        // matching chord summons.
+        var detector = MouseChordDetector(pursuitTimeout: 0.12)
+        XCTAssertFalse(detector.isPursuing)
+
+        _ = detector.handle(down(.left, at: 0), methods: leftRight)
+        XCTAssertTrue(detector.isPursuing, "a buffered first press leaves the detector pursuing")
+
+        _ = detector.handle(down(.right, at: 0.02), methods: leftRight)
+        XCTAssertFalse(detector.isPursuing, "after a chord summons the detector is no longer pursuing")
+    }
+
+    func testIsPursuingFalseAfterMotionDetected() {
+        var detector = MouseChordDetector(pursuitTimeout: 0.12)
+        _ = detector.handle(down(.left, at: 0), methods: leftRight)
+        XCTAssertTrue(detector.isPursuing)
+        _ = detector.motionDetected()
+        XCTAssertFalse(detector.isPursuing, "abandoning the pursuit drops the detector back to idle")
+    }
+
     // MARK: - Bringr-93j.96: new methods — middle, side buttons, multi-button combos
 
     func testMiddleAloneAtNonZeroDelayMatchesAndSummonsViaChordSummoned() {

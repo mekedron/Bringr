@@ -196,6 +196,79 @@ enum MouseActivationConfig {
         guard defaults.object(forKey: blockingDefaultsKey) != nil else { return defaultBlocking }
         return defaults.bool(forKey: blockingDefaultsKey)
     }
+
+    // MARK: Lock toggle
+
+    /// `UserDefaults` key for the lock toggle (Bringr-93j.103). Strictly stronger than the
+    /// blocking toggle above: where blocking *defers* the activation buttons' clicks during the
+    /// hold-delay window (and replays them as a normal click on a quick release), Lock simply
+    /// *drops* them — mouseDown and mouseUp both — for every event whose button is required by
+    /// an enabled method. The focused app sees nothing from those buttons for the duration of
+    /// the hold-or-tap, whether the wheel ends up summoning or not.
+    static let lockDefaultsKey = "activation.mouse.lock"
+
+    /// Default: OFF. Lock makes sense almost exclusively for Middle (most middle-click behaviour
+    /// fires on mouseUp — closing a tab, opening a link in a new tab — so eating both edges of
+    /// the click is invisible during normal browsing). For Left and Right it shows up as
+    /// noticeable unresponsiveness (text-selection drag, link-target arming, context menu all
+    /// start on mouseDown), so the default sits at OFF and the Preferences blurb warns the user
+    /// before they turn it on.
+    static let defaultLock = false
+
+    /// Whether lock mode is active. Absent key returns the default; an explicit `true` stays
+    /// on (the presence check distinguishes the two cases the same way the other readers do).
+    static func lock(from defaults: UserDefaults = .standard) -> Bool {
+        guard defaults.object(forKey: lockDefaultsKey) != nil else { return defaultLock }
+        return defaults.bool(forKey: lockDefaultsKey)
+    }
+}
+
+// MARK: - Mouse movement threshold
+
+/// How far the cursor may drift, in points, during the hold-delay window before the in-progress
+/// pursuit is cancelled and the buffered click is replayed as a normal click/drag (Bringr-93j.103).
+/// Before this knob, the threshold was a hard-coded 1 point — chosen to avoid stalling fast window
+/// drags (Bringr-93j.94) but too aggressive for genuinely-still holds: a stray-pixel-twitch under
+/// the user's still finger would cancel the activation. Making the threshold adjustable lets the
+/// user pick a value that fits their device and how steadily they hold.
+///
+/// Stored in points so the Preferences slider/field bind to it directly; readers return it as a
+/// `CGFloat` ready to compare with the squared distance from the press position. Read fresh per
+/// drag event, so a Preferences change applies on the next gesture without a relaunch.
+enum MouseActivationMoveThreshold {
+    /// `UserDefaults` key backing the persisted threshold.
+    static let defaultsKey = "activation.mouse.moveThresholdPoints"
+
+    /// 5 points by default — comfortably above the still-finger jitter envelope on a typical
+    /// trackpad/mouse, well below the few-tens-of-pixels a window drag clears in its first frame.
+    /// "5 points" matches the threshold macOS uses internally for several other touch-vs-drag
+    /// decisions (text-selection drag, etc.), so the feel sits inside familiar territory.
+    static let defaultPoints: Double = 5
+
+    /// The slider/field bounds, in points. 0 = restore the previous "any movement cancels"
+    /// behaviour; 50 is a generous upper bound — anything larger and a deliberate hold-and-drag
+    /// would feel like the click is "stuck" until the drag starts.
+    static let pointRange: ClosedRange<Double> = 0...50
+
+    /// The persisted threshold in points, clamped to the range, ready for a distance comparison.
+    static func current(from defaults: UserDefaults = .standard) -> CGFloat {
+        CGFloat(points(from: defaults))
+    }
+
+    /// The persisted threshold in points (the stored unit), clamped to the range. An absent
+    /// key yields the default; `double(forKey:)` alone returns 0 for a missing key — which
+    /// would silently flip the default to "any movement cancels" — so the presence check
+    /// distinguishes "absent" from "user explicitly chose 0".
+    static func points(from defaults: UserDefaults = .standard) -> Double {
+        guard defaults.object(forKey: defaultsKey) != nil else { return defaultPoints }
+        return clampPoints(defaults.double(forKey: defaultsKey))
+    }
+
+    /// Clamp a raw point value into `pointRange`, so a stray stored or typed value never
+    /// produces an absurd threshold.
+    static func clampPoints(_ value: Double) -> Double {
+        min(max(value, pointRange.lowerBound), pointRange.upperBound)
+    }
 }
 
 // MARK: - Mouse hold delay

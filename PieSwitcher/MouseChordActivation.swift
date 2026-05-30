@@ -94,6 +94,15 @@ struct MouseChordDetector {
         return false
     }
 
+    /// Whether a press is currently buffered toward a method's required set. The live monitor
+    /// reads this to decide whether a drag event is worth examining for the move-threshold
+    /// check (Bringr-93j.103) without mutating detector state — the existing `motionDetected()`
+    /// is mutating because it commits to abandoning the pursuit. Non-mutating peek.
+    var isPursuing: Bool {
+        if case .heldFirst = state { return true }
+        return false
+    }
+
     /// Clear all state. Used when the tap (re)starts so a stale held press from a previous
     /// session never resolves into the new one.
     mutating func reset() {

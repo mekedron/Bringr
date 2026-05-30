@@ -1,0 +1,131 @@
+import AppKit
+import SwiftUI
+
+// MARK: - Window
+
+/// Tiny transparent overlay that hosts the hold-delay progress circle
+/// (Bringr-93j.103). Pre-warmed at launch (like `RadialMenuWindow`) so a hold
+/// never allocates it on the hot path — show, animate, hide.
+///
+/// Click-through (`ignoresMouseEvents = true`): the indicator is purely visual
+/// confirmation of how much longer the user has to hold; it must NOT intercept
+/// the very mouse events whose delay it's visualising.
+final class HoldProgressWindow: NSPanel {
+    @MainActor
+    init(contentSize: CGSize) {
+        super.init(
+            contentRect: NSRect(origin: .zero, size: contentSize),
+            styleMask: [.borderless, .nonactivatingPanel],
+            backing: .buffered,
+            defer: false
+        )
+
+        isOpaque = false
+        backgroundColor = .clear
+        hasShadow = false
+        level = .floating
+        isFloatingPanel = true
+        hidesOnDeactivate = false
+        isReleasedWhenClosed = false
+        ignoresMouseEvents = true
+        collectionBehavior = [.canJoinAllSpaces, .stationary, .fullScreenAuxiliary]
+    }
+
+    /// Match `RadialMenuWindow`: don't let AppKit shove the frame back inside
+    /// the visible screen rect. The indicator is small and harmless past an
+    /// edge; what matters is that it stays centred on the cursor.
+    override func constrainFrameRect(_ frameRect: NSRect, to screen: NSScreen?) -> NSRect {
+        frameRect
+    }
+}
+
+// MARK: - View
+
+/// The progress circle itself, animated by SwiftUI's implicit animation system
+/// (`withAnimation(.linear(duration:))` on the controller's `progress` value).
+/// Drawn over a thin track ring so the user can read "how full" at a glance
+/// even at low progress.
+struct HoldProgressView: View {
+    @ObservedObject var controller: HoldProgressController
+
+    var body: some View {
+        ZStack {
+            Circle()
+                .stroke(Color.primary.opacity(0.18), lineWidth: HoldProgressController.lineWidth)
+            Circle()
+                .trim(from: 0, to: controller.progress)
+                .stroke(
+                    Color.accentColor.opacity(0.95),
+                    style: StrokeStyle(lineWidth: HoldProgressController.lineWidth, lineCap: .round)
+                )
+                .rotationEffect(.degrees(-90))
+        }
+        .padding(HoldProgressController.lineWidth / 2 + 1)
+        .shadow(color: .black.opacity(0.35), radius: 2, y: 0.5)
+    }
+}
+
+// MARK: - Controller
+
+/// Owns the pre-warmed progress window and drives the fill animation while a
+/// hold-delay timer is running (Bringr-93j.103). The mouse and modifier monitors
+/// both call `start(duration:)` when their timers arm and `cancel()` when they
+/// cancel or complete, so the same visual lights up for both triggers.
+@MainActor
+final class HoldProgressController: ObservableObject {
+    /// `0.0` → `1.0`, animated to 1.0 over the hold delay so the ring fills
+    /// in lock-step with the timer. Read by `HoldProgressView`.
+    @Published private(set) var progress: Double = 0
+
+    /// Diameter of the indicator window, in points. Big enough to be obviously
+    /// "around the cursor" without looking like a target reticle on top of fine
+    /// UI underneath.
+    static let diameter: CGFloat = 56
+    /// Ring stroke width. Matches the visual weight of the wheel's hover rim
+    /// so it reads as the same family of cue.
+    static let lineWidth: CGFloat = 4
+
+    private let window: HoldProgressWindow
+
+    init() {
+        window = HoldProgressWindow(
+            contentSize: CGSize(width: Self.diameter, height: Self.diameter)
+        )
+        window.contentView = NSHostingView(rootView: HoldProgressView(controller: self))
+    }
+
+    /// Show the ring centred on the current cursor and animate it from empty
+    /// to full over `duration`. A zero or negative duration is a no-op — the
+    /// indicator only makes sense when the user actually has to wait.
+    func start(duration: TimeInterval) {
+        guard duration > 0 else { return }
+        // Snap to empty immediately, without animation, so a quick re-trigger
+        // (release + re-press) doesn't show a half-filled stale state for the
+        // first frame.
+        progress = 0
+
+        let cursor = NSEvent.mouseLocation
+        let half = Self.diameter / 2
+        let frame = NSRect(
+            x: cursor.x - half,
+            y: cursor.y - half,
+            width: Self.diameter,
+            height: Self.diameter
+        )
+        window.setFrame(frame, display: false)
+        window.orderFrontRegardless()
+
+        // SwiftUI's implicit animation runtime fills the ring smoothly over
+        // `duration` without us managing a Display Link or per-frame timer.
+        withAnimation(.linear(duration: duration)) {
+            progress = 1.0
+        }
+    }
+
+    /// Hide the indicator and reset progress to 0. Safe to call when already
+    /// hidden — `orderOut` and a no-op assignment.
+    func cancel() {
+        window.orderOut(nil)
+        progress = 0
+    }
+}

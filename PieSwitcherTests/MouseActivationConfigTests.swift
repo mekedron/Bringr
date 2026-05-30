@@ -77,6 +77,29 @@ final class MouseActivationConfigTests: XCTestCase {
         }
     }
 
+    // MARK: Lock toggle (Bringr-93j.103)
+
+    func testLockDefaultIsOff() {
+        // Lock is the stronger "drop the click entirely" toggle introduced in .103. It defaults
+        // OFF because it would noticeably break Left/Right click behaviour (link arming, text
+        // selection, context menu) — only Middle benefits from it, and only for users who
+        // explicitly opt in.
+        XCTAssertFalse(MouseActivationConfig.defaultLock)
+        XCTAssertFalse(MouseActivationConfig.lock(from: makeDefaults()))
+    }
+
+    func testLockStoredValueRoundTrips() {
+        for value in [true, false] {
+            let defaults = makeDefaults()
+            defaults.set(value, forKey: MouseActivationConfig.lockDefaultsKey)
+            XCTAssertEqual(MouseActivationConfig.lock(from: defaults), value)
+        }
+    }
+
+    func testLockDefaultsKeyIsStable() {
+        XCTAssertEqual(MouseActivationConfig.lockDefaultsKey, "activation.mouse.lock")
+    }
+
     private func makeDefaults() -> UserDefaults {
         let suiteName = "MouseActivationConfigTests.\(UUID().uuidString)"
         guard let defaults = UserDefaults(suiteName: suiteName) else {
@@ -163,6 +186,66 @@ final class MouseActivationHoldDelayTests: XCTestCase {
 
     private func makeDefaults() -> UserDefaults {
         let suiteName = "MouseActivationHoldDelayTests.\(UUID().uuidString)"
+        guard let defaults = UserDefaults(suiteName: suiteName) else {
+            fatalError("could not create a test UserDefaults suite")
+        }
+        return defaults
+    }
+}
+
+/// Covers the persisted move-threshold knob (Bringr-93j.103): the default, the points↔CGFloat
+/// readers, the "stored 0 vs absent key" guard, and clamping. Mirrors the hold-delay tests
+/// since both knobs sit next to each other in the same persisted config surface.
+final class MouseActivationMoveThresholdTests: XCTestCase {
+
+    func testDefaultPointsIsFive() {
+        // 5 pt was picked as the default in .103: well above the steady-finger jitter envelope
+        // (so a held middle click doesn't get cancelled by a one-pixel twitch) and well below
+        // the few-tens-of-pixels a deliberate drag clears in its first frame.
+        XCTAssertEqual(MouseActivationMoveThreshold.defaultPoints, 5)
+    }
+
+    func testDefaultsKeyIsStable() {
+        XCTAssertEqual(MouseActivationMoveThreshold.defaultsKey, "activation.mouse.moveThresholdPoints")
+    }
+
+    func testCurrentDefaultsToFiveWhenUnset() {
+        XCTAssertEqual(MouseActivationMoveThreshold.points(from: makeDefaults()), 5)
+        XCTAssertEqual(MouseActivationMoveThreshold.current(from: makeDefaults()), 5, accuracy: 1e-9)
+    }
+
+    func testStoredValueRoundTrips() {
+        let defaults = makeDefaults()
+        defaults.set(12.0, forKey: MouseActivationMoveThreshold.defaultsKey)
+        XCTAssertEqual(MouseActivationMoveThreshold.points(from: defaults), 12)
+        XCTAssertEqual(MouseActivationMoveThreshold.current(from: defaults), 12, accuracy: 1e-9)
+    }
+
+    func testStoredZeroIsRespected() {
+        // 0 = "restore the old any-movement-cancels behaviour" — distinct from "never set".
+        let defaults = makeDefaults()
+        defaults.set(0.0, forKey: MouseActivationMoveThreshold.defaultsKey)
+        XCTAssertEqual(MouseActivationMoveThreshold.points(from: defaults), 0)
+    }
+
+    func testValuesAreClampedToRange() {
+        let high = makeDefaults()
+        high.set(500.0, forKey: MouseActivationMoveThreshold.defaultsKey)
+        XCTAssertEqual(MouseActivationMoveThreshold.points(from: high), 50)
+
+        let low = makeDefaults()
+        low.set(-3.0, forKey: MouseActivationMoveThreshold.defaultsKey)
+        XCTAssertEqual(MouseActivationMoveThreshold.points(from: low), 0)
+    }
+
+    func testClampPointsHelper() {
+        XCTAssertEqual(MouseActivationMoveThreshold.clampPoints(75), 50)
+        XCTAssertEqual(MouseActivationMoveThreshold.clampPoints(-1), 0)
+        XCTAssertEqual(MouseActivationMoveThreshold.clampPoints(25), 25)
+    }
+
+    private func makeDefaults() -> UserDefaults {
+        let suiteName = "MouseActivationMoveThresholdTests.\(UUID().uuidString)"
         guard let defaults = UserDefaults(suiteName: suiteName) else {
             fatalError("could not create a test UserDefaults suite")
         }
