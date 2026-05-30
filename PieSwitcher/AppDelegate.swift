@@ -80,7 +80,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     /// retry the instant `PermissionsManager` reports trust, with no relaunch.
     private func startActivationMonitor() {
         let monitor = MouseChordMonitor(
-            isEnabled: { MouseChordActivation.isEnabled() },
             onChord: { [weak self] in
                 guard let self, let radialMenu = self.radialMenu else { return }
                 radialMenu.triggerPressed(for: .mouseChord, at: NSEvent.mouseLocation)

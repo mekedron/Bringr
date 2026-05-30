@@ -10,12 +10,9 @@ struct PreferencesView: View {
     /// fresh at each summon, so a change here applies on the next open without a relaunch.
     @AppStorage(CuratedApps.showOtherRunningAppsDefaultsKey)
     private var showsOtherRunningApps = CuratedApps.showOtherRunningAppsDefault
-    /// How the mouse and keyboard summon the menu (Bringr-93j.35, Bringr-93j.67, Bringr-93j.69).
-    /// The same keys are read fresh by the activation monitors, so a change here takes effect
-    /// with no relaunch. The mouse's left+right click and the keyboard's held modifier
-    /// combination are independent triggers, so either, both, or neither can be on at once.
-    @AppStorage(MouseChordActivation.defaultsKey)
-    private var mouseChordEnabled = MouseChordActivation.default
+    /// How the keyboard summons the menu (Bringr-93j.35, Bringr-93j.69). The mouse side reads
+    /// its own keys directly from `MouseActivationSettings`. Every activation key is read
+    /// fresh by the live monitors, so a change here takes effect with no relaunch.
     @AppStorage(ModifierActivation.keyboardDefaultsKey)
     private var keyboardModifiersRaw = ModifierActivation.keyboardDefault.rawValue
 
@@ -80,18 +77,7 @@ struct PreferencesView: View {
 
     private var mouseSection: some View {
         VStack(alignment: .leading, spacing: 12) {
-            VStack(alignment: .leading, spacing: 8) {
-                Toggle("Left and right click together", isOn: $mouseChordEnabled)
-
-                Text(mouseChordEnabled
-                     ? "Press the left and right mouse buttons together to summon the wheel. "
-                       + "Normal single clicks pass through untouched."
-                     : "Turn this on to summon the wheel by pressing the left and right mouse "
-                       + "buttons together. The keyboard shortcut still works on its own.")
-                    .font(.callout)
-                    .foregroundStyle(.secondary)
-                    .fixedSize(horizontal: false, vertical: true)
-            }
+            MouseActivationSettings()
 
             Divider()
 

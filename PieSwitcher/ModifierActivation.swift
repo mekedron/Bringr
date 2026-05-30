@@ -58,31 +58,9 @@ struct ModifierCombination: OptionSet, Hashable, Sendable {
     }
 }
 
-// MARK: - Mouse left+right-click trigger
-
-/// Whether the simultaneous left+right mouse click summons the menu (US-007). This is the
-/// mouse's summon trigger; the keyboard's held modifier combination
-/// (`ModifierActivation.keyboard`) is a separate, independent trigger, so either, both, or
-/// neither can be on at once (Bringr-93j.67, Bringr-93j.69).
-/// A caseless namespace for the read helper, mirroring `HideOnCommit`; read fresh by
-/// `MouseChordMonitor` on every event so a Preferences change applies with no relaunch.
-enum MouseChordActivation {
-    /// `UserDefaults` key backing the toggle. Single source of truth shared by the
-    /// Preferences `@AppStorage` and `isEnabled(from:)` so the two cannot drift.
-    static let defaultsKey = "activation.mouse.leftRightClick"
-
-    /// Default: ON. Left+right click is the out-of-the-box v1 mouse trigger, so a fresh
-    /// install summons with it (matching the pre-Bringr-93j.67 default mouse method).
-    static let `default` = true
-
-    /// Whether the left+right chord is an active mouse trigger. Because the default is ON,
-    /// the unset case is checked explicitly — `bool(forKey:)` alone returns `false` for an
-    /// absent key, which would silently flip the default (mirroring `CuratedApps`).
-    static func isEnabled(from defaults: UserDefaults = .standard) -> Bool {
-        guard defaults.object(forKey: defaultsKey) != nil else { return `default` }
-        return defaults.bool(forKey: defaultsKey)
-    }
-}
+// The pre-Bringr-93j.96 `MouseChordActivation` namespace (a single Bool key for "L+R click")
+// was replaced by the multi-method `MouseActivationConfig` in `MouseActivation.swift`. The
+// keyboard side intentionally stays separate so each input source carries its own settings.
 
 // MARK: - Persisted modifier combinations
 

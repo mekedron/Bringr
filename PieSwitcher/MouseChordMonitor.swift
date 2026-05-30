@@ -5,51 +5,66 @@ import os
 
 // MARK: - Live monitor (CGEventTap)
 
-/// Installs a global mouse event tap, feeds presses into a `MouseChordDetector`,
-/// and fires `onChord` when a simultaneous left+right press is detected.
+/// Installs a global mouse event tap, feeds presses into a `MouseChordDetector`, and fires
+/// `onChord` when one of the configured `MouseActivationMethod`s' required buttons have all
+/// been held for the configured hold delay (Bringr-93j.96).
 ///
-/// The tap is active (`.defaultTap`) so the detector can suppress the chord's
-/// events (AC4). Deferred presses are buffered as live `CGEvent`s and replayed —
-/// tagged with a sentinel so the tap ignores its own re-injected events — when the
-/// detector decides they were ordinary clicks (AC2). Accessibility/Input
-/// Monitoring permission is required; without it `start()` fails gracefully and
-/// logs, matching the permission-degradation philosophy of US-002.
+/// The tap watches every mouse button (left, right, middle, and the two side buttons) plus
+/// their drag events. Deferred presses are buffered as live `CGEvent`s only while *blocking*
+/// mode is enabled; in non-blocking mode every event passes straight through and the chord is
+/// detected non-invasively, which guarantees no system-wide lag — the CRITICAL constraint of
+/// Bringr-93j.96. Accessibility/Input Monitoring permission is required; without it `start()`
+/// fails gracefully and logs, matching US-002's permission-degradation philosophy.
 @MainActor
 final class MouseChordMonitor {
-    private var detector: MouseChordDetector
-    private let onChord: () -> Void
+    var detector: MouseChordDetector
+    let onChord: () -> Void
     private let onChordReleased: () -> Void
-    /// Whether the left+right chord is the mouse's active trigger right now, read fresh
-    /// each event so switching the mouse to modifier keys takes effect at once (Bringr-93j.35).
-    private let isEnabled: () -> Bool
+    /// The currently enabled `MouseActivationMethod`s, read fresh per event so a Preferences
+    /// change applies on the next press with no relaunch. Empty set = mouse activation is off.
+    private let methodsProvider: () -> Set<MouseActivationMethod>
+    /// The hold delay in seconds, read fresh per event so a Preferences change applies on
+    /// the next press without a relaunch.
+    private let holdDelayProvider: () -> TimeInterval
+    /// Whether blocking mode is on, read fresh per event. ON = button events of a pursued
+    /// method are buffered; OFF = events always pass through and the detector observes only.
+    private let blockingProvider: () -> Bool
 
     private var eventTap: CFMachPort?
     private var runLoopSource: CFRunLoopSource?
-    private var heldEvents: [CGEvent] = []
-    private var holdTimer: Timer?
+    var heldEvents: [CGEvent] = []
+    var pursuitTimer: Timer?
+    var holdDelayTimer: Timer?
+    /// The match that the hold-delay timer is currently armed for, so a late state change
+    /// (e.g. the user released a button before the delay elapsed) can cancel it precisely.
+    var pendingMatch: MouseActivationMethod?
 
-    /// Whether a chord is currently summoned and at least one of its buttons is
-    /// still physically held. Used to fire `onChordReleased` exactly once, when the
-    /// last chord button comes up — the release that drives hold-to-select (US-009).
-    private var chordActive = false
+    /// Whether a chord is currently summoned and at least one of its buttons is still
+    /// physically held. Used to fire `onChordReleased` exactly once when the last chord
+    /// button comes up — the release that drives hold-to-select (US-009).
+    var chordActive = false
     /// Buttons physically down right now, tracked from the raw event stream so the
-    /// chord-release moment is known even though the detector consumes the ups.
+    /// chord-release moment is known even when the detector consumes the ups.
     private var physicallyDown: Set<MouseButton> = []
 
     private let log = Logger(subsystem: "com.mekedron.PieSwitcher", category: "MouseChord")
 
-    /// Stamped into `eventSourceUserData` of replayed events so the tap passes its
-    /// own re-injected presses straight through instead of re-detecting them.
-    private static let replaySentinel: Int64 = 0x4252_4E47  // "BRNG"
+    /// Stamped into `eventSourceUserData` of replayed events so the tap passes its own
+    /// re-injected presses straight through instead of re-detecting them.
+    static let replaySentinel: Int64 = 0x4252_4E47  // "BRNG"
 
     init(
-        threshold: TimeInterval = 0.12,
-        isEnabled: @escaping () -> Bool = { true },
+        pursuitTimeout: TimeInterval = 0.12,
+        methodsProvider: @escaping () -> Set<MouseActivationMethod> = { MouseActivationConfig.methods() },
+        holdDelayProvider: @escaping () -> TimeInterval = { MouseActivationHoldDelay.current() },
+        blockingProvider: @escaping () -> Bool = { MouseActivationConfig.blocking() },
         onChord: @escaping () -> Void,
         onChordReleased: @escaping () -> Void = {}
     ) {
-        self.detector = MouseChordDetector(threshold: threshold)
-        self.isEnabled = isEnabled
+        self.detector = MouseChordDetector(pursuitTimeout: pursuitTimeout)
+        self.methodsProvider = methodsProvider
+        self.holdDelayProvider = holdDelayProvider
+        self.blockingProvider = blockingProvider
         self.onChord = onChord
         self.onChordReleased = onChordReleased
     }
@@ -57,24 +72,27 @@ final class MouseChordMonitor {
     /// Whether the tap is currently installed.
     var isRunning: Bool { eventTap != nil }
 
-    /// Install the event tap. Idempotent; returns `false` (and logs) if the tap
-    /// cannot be created, which happens when the process lacks the required
-    /// permission. Call again once permission is granted to retry.
+    /// Install the event tap. Idempotent; returns `false` (and logs) if the tap cannot be
+    /// created, which happens when the process lacks the required permission. Call again
+    /// once permission is granted to retry.
     @discardableResult
     func start() -> Bool {
         guard eventTap == nil else { return true }
 
-        // Drag events are in the mask so a press-then-drag (any window drag) can
-        // short-circuit the chord hold and let the down through immediately
-        // (Bringr-93j.94). Without them the buffered down sits for the full
-        // threshold, which the user sees as a system-wide drag-start stutter.
+        // Drag events are in the mask so a press-then-drag (any window drag) can short-circuit
+        // the chord hold and let the down through immediately (Bringr-93j.94). Without them
+        // the buffered down sits for the full pursuit timeout, which the user sees as a
+        // system-wide drag-start stutter.
         let mask: CGEventMask =
             (1 << CGEventType.leftMouseDown.rawValue) |
             (1 << CGEventType.leftMouseUp.rawValue) |
             (1 << CGEventType.rightMouseDown.rawValue) |
             (1 << CGEventType.rightMouseUp.rawValue) |
+            (1 << CGEventType.otherMouseDown.rawValue) |
+            (1 << CGEventType.otherMouseUp.rawValue) |
             (1 << CGEventType.leftMouseDragged.rawValue) |
-            (1 << CGEventType.rightMouseDragged.rawValue)
+            (1 << CGEventType.rightMouseDragged.rawValue) |
+            (1 << CGEventType.otherMouseDragged.rawValue)
 
         let callback: CGEventTapCallBack = { _, type, event, userInfo in
             guard let userInfo else { return Unmanaged.passUnretained(event) }
@@ -113,10 +131,12 @@ final class MouseChordMonitor {
         if let runLoopSource { CFRunLoopRemoveSource(CFRunLoopGetMain(), runLoopSource, .commonModes) }
         eventTap = nil
         runLoopSource = nil
-        cancelHoldTimer()
+        cancelPursuitTimer()
+        cancelHoldDelayTimer()
         heldEvents.removeAll()
         chordActive = false
         physicallyDown.removeAll()
+        pendingMatch = nil
         detector.reset()
     }
 
@@ -129,10 +149,16 @@ final class MouseChordMonitor {
             return Unmanaged.passUnretained(event)
         }
 
-        // The mouse may be set to a modifier-key trigger instead of the chord; if so,
-        // flush any half-buffered press and let every click through untouched (Bringr-93j.35).
-        if !isEnabled() {
+        let methods = methodsProvider()
+
+        // No methods enabled = mouse activation is off; flush any half-buffered press and let
+        // every event through untouched. Avoids stranding a buffered press if the user disables
+        // methods mid-pursuit.
+        if methods.isEmpty {
             if !heldEvents.isEmpty { replayHeldEvents() }
+            cancelPursuitTimer()
+            cancelHoldDelayTimer()
+            pendingMatch = nil
             detector.reset()
             return Unmanaged.passUnretained(event)
         }
@@ -142,11 +168,12 @@ final class MouseChordMonitor {
             return Unmanaged.passUnretained(event)
         }
 
-        if type == .leftMouseDragged || type == .rightMouseDragged {
+        if type == .leftMouseDragged || type == .rightMouseDragged || type == .otherMouseDragged {
             return handleDrag(event)
         }
 
-        guard let button = Self.button(for: type), let phase = Self.phase(for: type) else {
+        guard let button = MouseButton.from(eventType: type, event: event),
+              let phase = MouseButtonPhase.from(eventType: type) else {
             return Unmanaged.passUnretained(event)
         }
 
@@ -155,13 +182,17 @@ final class MouseChordMonitor {
         case .up: physicallyDown.remove(button)
         }
 
+        let blocking = blockingProvider()
+        let holdDelay = holdDelayProvider()
         let reaction = detector.handle(
-            MouseButtonEvent(button: button, phase: phase, timestamp: ProcessInfo.processInfo.systemUptime)
+            MouseButtonEvent(button: button, phase: phase, timestamp: ProcessInfo.processInfo.systemUptime),
+            methods: methods,
+            holdDelay: holdDelay
         )
-        let result = apply(reaction, to: event)
+        let result = apply(reaction, to: event, blocking: blocking, holdDelay: holdDelay)
 
-        // Fire once when the last button of a summoned chord is released — the
-        // signal hold-to-select uses to commit (US-009).
+        // Fire once when the last button of a summoned chord is released — the signal
+        // hold-to-select uses to commit (US-009).
         if chordActive, physicallyDown.isEmpty {
             chordActive = false
             onChordReleased()
@@ -169,19 +200,44 @@ final class MouseChordMonitor {
         return result
     }
 
-    /// A drag with a button held while we are still waiting for a chord partner is
-    /// plainly a drag, not a chord — release the buffered press at once so the
-    /// focused app sees the drag start without the threshold-long stall that was
-    /// causing system-wide drag-start stutter (Bringr-93j.94). Append the current
-    /// drag to the buffer so the replay preserves down→drag order.
+    /// A drag with a button held while we are still waiting for a chord partner is plainly
+    /// a drag, not a chord — release the buffered press at once so the focused app sees the
+    /// drag start without the threshold-long stall that was causing system-wide drag-start
+    /// stutter (Bringr-93j.94). Append the current drag to the buffer so the replay preserves
+    /// down→drag order. The CRITICAL constraint of Bringr-93j.96 means this short-circuit also
+    /// covers middle/side buttons via `.otherMouseDragged`.
     private func handleDrag(_ event: CGEvent) -> Unmanaged<CGEvent>? {
         guard detector.motionDetected() else { return Unmanaged.passUnretained(event) }
+        cancelHoldDelayTimer()
+        pendingMatch = nil
         heldEvents.append(event)
         replayHeldEvents()
         return nil
     }
 
-    private func apply(_ reaction: MouseChordReaction, to event: CGEvent) -> Unmanaged<CGEvent>? {
+    private func apply(
+        _ reaction: MouseChordReaction,
+        to event: CGEvent,
+        blocking: Bool,
+        holdDelay: TimeInterval
+    ) -> Unmanaged<CGEvent>? {
+        // In non-blocking mode every event passes through unchanged. The detector still
+        // tracks state so the hold-delay timer / summon side effects fire just as in blocking
+        // mode — but no event is ever held back, which is what eliminates the system-wide lag.
+        if !blocking {
+            applySideEffects(reaction, holdDelay: holdDelay)
+            return Unmanaged.passUnretained(event)
+        }
+        return applyBlocking(reaction, event: event, holdDelay: holdDelay)
+    }
+
+    /// In blocking mode the detector's reactions drive what happens to the live event: pass
+    /// through, drop, or buffer it for a later replay/discard.
+    private func applyBlocking(
+        _ reaction: MouseChordReaction,
+        event: CGEvent,
+        holdDelay: TimeInterval
+    ) -> Unmanaged<CGEvent>? {
         switch reaction {
         case .pass:
             return Unmanaged.passUnretained(event)
@@ -191,23 +247,26 @@ final class MouseChordMonitor {
 
         case .hold:
             heldEvents.append(event)
-            scheduleHoldTimer()
+            updateMatchTrackers(holdDelay: holdDelay)
             return nil
 
         case .releaseHeldThenHold:
             replayHeldEvents()
             heldEvents.append(event)
-            scheduleHoldTimer()
+            updateMatchTrackers(holdDelay: holdDelay)
             return nil
 
         case .releaseHeldWithCurrent:
-            cancelHoldTimer()
+            cancelHoldDelayTimer()
+            pendingMatch = nil
             heldEvents.append(event)
             replayHeldEvents()
             return nil
 
         case .summon:
-            cancelHoldTimer()
+            cancelPursuitTimer()
+            cancelHoldDelayTimer()
+            pendingMatch = nil
             heldEvents.removeAll()
             chordActive = true
             onChord()
@@ -215,52 +274,41 @@ final class MouseChordMonitor {
         }
     }
 
-    /// Re-inject every buffered press, in order, tagged so the tap lets them
-    /// through. Posting from inside the callback keeps the original ordering, so
-    /// the app sees a clean press/release rather than an out-of-order pair.
-    private func replayHeldEvents() {
-        cancelHoldTimer()
-        let events = heldEvents
-        heldEvents.removeAll()
-        for event in events {
-            event.setIntegerValueField(.eventSourceUserData, value: Self.replaySentinel)
-            event.post(tap: .cgSessionEventTap)
+    /// In non-blocking mode the live event always passes through, but the detector's
+    /// transition still drives the hold-delay timer or the immediate summon, so the chord
+    /// still fires on schedule.
+    private func applySideEffects(_ reaction: MouseChordReaction, holdDelay: TimeInterval) {
+        if reaction == .summon {
+            cancelPursuitTimer()
+            cancelHoldDelayTimer()
+            pendingMatch = nil
+            chordActive = true
+            onChord()
+            return
+        }
+        updateMatchTrackers(holdDelay: holdDelay)
+    }
+
+    /// Bring the pursuit and hold-delay timers in sync with the detector's current
+    /// `matchedMethod`. Shared between blocking and non-blocking modes so a state change
+    /// produces the same timing in both. The pursuit timer only runs while we have buffered
+    /// events: in non-blocking mode there's nothing to replay, so leaving the detector in a
+    /// long-lived partial-match state is fine — the user can complete the combo at any time.
+    private func updateMatchTrackers(holdDelay: TimeInterval) {
+        guard !chordActive else { return }
+        let matched = detector.matchedMethod
+        if matched != pendingMatch {
+            cancelHoldDelayTimer()
+            pendingMatch = matched
+            if matched != nil, holdDelay > 0 {
+                scheduleHoldDelayTimer(delay: holdDelay)
+            }
+        }
+        if matched == nil, !heldEvents.isEmpty {
+            schedulePursuitTimer()
+        } else {
+            cancelPursuitTimer()
         }
     }
 
-    private func scheduleHoldTimer() {
-        cancelHoldTimer()
-        let timer = Timer(timeInterval: detector.threshold, repeats: false) { [weak self] _ in
-            Task { @MainActor in self?.holdTimerFired() }
-        }
-        RunLoop.main.add(timer, forMode: .common)
-        holdTimer = timer
-    }
-
-    private func cancelHoldTimer() {
-        holdTimer?.invalidate()
-        holdTimer = nil
-    }
-
-    private func holdTimerFired() {
-        if detector.handleTimeout(at: ProcessInfo.processInfo.systemUptime) {
-            replayHeldEvents()
-        }
-    }
-
-    private static func button(for type: CGEventType) -> MouseButton? {
-        switch type {
-        case .leftMouseDown, .leftMouseUp: return .left
-        case .rightMouseDown, .rightMouseUp: return .right
-        default: return nil
-        }
-    }
-
-    private static func phase(for type: CGEventType) -> MouseButtonPhase? {
-        switch type {
-        case .leftMouseDown, .rightMouseDown: return .down
-        case .leftMouseUp, .rightMouseUp: return .up
-        default: return nil
-        }
-    }
 }
