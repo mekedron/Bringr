@@ -214,3 +214,38 @@ struct MouseActivationSettings: View {
         return "Enabled: \(names). Any one of these summons the wheel."
     }
 }
+
+/// The mouse's interaction-mode picker (US-009 / Bringr-93j.91). Separate from the
+/// keyboard's picker so each input source carries its own preference; both keys are
+/// read fresh at each summon by `RadialMenuController`, so a change here applies on
+/// the next open without a relaunch. Moved out of `PreferencesView.swift` in
+/// Bringr-93j.97 so the mouse activation controls sit together in one file.
+struct MouseInteractionMode: View {
+    @AppStorage(InteractionMode.mouseDefaultsKey)
+    private var modeRaw = InteractionMode.defaultForMouse.rawValue
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Picker("When summoned:", selection: $modeRaw) {
+                ForEach(InteractionMode.allCases, id: \.rawValue) { mode in
+                    Text(mode.displayName).tag(mode.rawValue)
+                }
+            }
+            .pickerStyle(.radioGroup)
+
+            Text(modeHelp)
+                .font(.callout)
+                .foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+    }
+
+    private var modeHelp: String {
+        switch InteractionMode(rawValue: modeRaw) ?? .defaultForMouse {
+        case .holdToSelect:
+            return "Hold the chord, glide to a slice, release to choose; release on the centre to cancel."
+        case .clickToStay:
+            return "The wheel stays open after release. Click a slice to choose it, or the centre to cancel."
+        }
+    }
+}

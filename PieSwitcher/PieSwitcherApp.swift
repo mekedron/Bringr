@@ -16,12 +16,10 @@ struct PieSwitcherApp: App {
         }
         .menuBarExtraStyle(.menu)
 
-        Window("About PieSwitcher", id: "about") {
-            AboutView()
-        }
-        .windowResizability(.contentSize)
-        .defaultPosition(.center)
-
+        // Bringr-93j.97 folded the former standalone "About" window into Preferences as a
+        // tab, so this scene is the only window the app ships now. The menu bar's "About
+        // PieSwitcher" item writes `PreferencesTab.about` into UserDefaults before
+        // calling `openWindow(id: "preferences")`, so it lands on the About tab.
         Window("PieSwitcher Preferences", id: "preferences") {
             PreferencesView()
                 .environmentObject(appDelegate.permissions)
@@ -67,8 +65,7 @@ private struct MenuContent: View {
         }
 
         Button("About PieSwitcher") {
-            NSApp.activate(ignoringOtherApps: true)
-            openWindow(id: "about")
+            openPreferences(on: .about)
         }
 
         Divider()
@@ -79,7 +76,14 @@ private struct MenuContent: View {
         .keyboardShortcut("q")
     }
 
-    private func openPreferences() {
+    /// Activate the app and open Preferences, optionally pre-selecting a tab. When `tab`
+    /// is supplied we write the persisted key first so the TabView's `@AppStorage` picks
+    /// it up the moment the window mounts (or, if already open, snaps to the new
+    /// selection); when omitted, the window reopens on the last-used tab.
+    private func openPreferences(on tab: PreferencesTab? = nil) {
+        if let tab {
+            UserDefaults.standard.set(tab.rawValue, forKey: PreferencesTab.defaultsKey)
+        }
         NSApp.activate(ignoringOtherApps: true)
         openWindow(id: "preferences")
     }

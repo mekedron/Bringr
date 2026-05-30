@@ -1,144 +1,108 @@
 import SwiftUI
 
-/// The Preferences window. v1 surfaces Accessibility-permission status, the actions
-/// to grant it, the interaction mode (US-009), and the wheel appearance (US-014).
+/// The Preferences window's tabs (Bringr-93j.97). Each tab is a focused topic — the
+/// groupings were redrawn from scratch rather than tracing the old scroll-list order.
+/// The selected tab is persisted in `UserDefaults`, so the window reopens where the
+/// user left it, and the menu bar's "About PieSwitcher" item writes the key before
+/// opening the window so it lands on the About tab (the standalone About window was
+/// folded into Preferences as the About tab).
+enum PreferencesTab: String, CaseIterable {
+    case general
+    case activation
+    case wheel
+    case appearance
+    case myApps
+    case collection
+    case navigation
+    case about
+
+    static let defaultsKey = "preferences.selectedTab"
+    static let `default`: PreferencesTab = .general
+
+    var title: String {
+        switch self {
+        case .general: return "General"
+        case .activation: return "Activation"
+        case .wheel: return "Wheel"
+        case .appearance: return "Appearance"
+        case .myApps: return "My Apps"
+        case .collection: return "Collection"
+        case .navigation: return "Navigation"
+        case .about: return "About"
+        }
+    }
+
+    var symbolName: String {
+        switch self {
+        case .general: return "gear"
+        case .activation: return "cursorarrow.click.2"
+        case .wheel: return "circle.dashed"
+        case .appearance: return "paintbrush"
+        case .myApps: return "star"
+        case .collection: return "rectangle.3.group"
+        case .navigation: return "keyboard"
+        case .about: return "info.circle"
+        }
+    }
+}
+
+/// The Preferences window, restructured into a tabbed layout (Bringr-93j.97). Each tab
+/// is a focused subset of settings; tabs that wrap a single existing settings view stay
+/// thin, tabs with two or more sections compose them with the `PreferencesSection`
+/// helper so the heading style matches the pre-tabbed look.
 struct PreferencesView: View {
-    @EnvironmentObject private var permissions: PermissionsManager
-    @EnvironmentObject private var launchAtLogin: LaunchAtLoginManager
-    /// Whether the wheel appends the other running apps after the curated block
-    /// (Bringr-93j.42). `MyAppsMenu` reads the same key via `CuratedApps.showsOtherRunningApps`
-    /// fresh at each summon, so a change here applies on the next open without a relaunch.
-    @AppStorage(CuratedApps.showOtherRunningAppsDefaultsKey)
-    private var showsOtherRunningApps = CuratedApps.showOtherRunningAppsDefault
-    /// How the keyboard summons the menu (Bringr-93j.35, Bringr-93j.69). The mouse side reads
-    /// its own keys directly from `MouseActivationSettings`. Every activation key is read
-    /// fresh by the live monitors, so a change here takes effect with no relaunch.
-    @AppStorage(ModifierActivation.keyboardDefaultsKey)
-    private var keyboardModifiersRaw = ModifierActivation.keyboardDefault.rawValue
+    @AppStorage(PreferencesTab.defaultsKey)
+    private var selectedTabRaw = PreferencesTab.default.rawValue
 
     var body: some View {
-        ScrollView {
-            VStack(alignment: .leading, spacing: 18) {
-                section("Permissions", isFirst: true) { permissionSection }
-                section("Mouse") { mouseSection }
-                section("Keyboard") { keyboardSection }
-                section("Startup") { startupSection }
-                section("Keyboard Navigation") { KeyboardNavigationSettings() }
-                section("Haptics") { TrackpadHapticsSettings() }
-                section("Reveal mode") { revealSection }
-                section("Sorting") { SortingSettings() }
-                section("Collection") { collectionSection }
-                section("Excluded Apps") { IgnoreListSettings() }
-                section("My Apps") { myAppsSection }
-                section("Appearance") { AppearanceSettings() }
+        let selection = Binding(
+            get: { PreferencesTab(rawValue: selectedTabRaw) ?? .default },
+            set: { selectedTabRaw = $0.rawValue }
+        )
+        return TabView(selection: selection) {
+            GeneralPreferencesTab().preferencesTabItem(.general)
+            ActivationPreferencesTab().preferencesTabItem(.activation)
+            WheelPreferencesTab().preferencesTabItem(.wheel)
+            AppearancePreferencesTab().preferencesTabItem(.appearance)
+            MyAppsPreferencesTab().preferencesTabItem(.myApps)
+            CollectionPreferencesTab().preferencesTabItem(.collection)
+            NavigationPreferencesTab().preferencesTabItem(.navigation)
+            AboutPreferencesTab().preferencesTabItem(.about)
+        }
+        .frame(width: 900, height: 620)
+    }
+}
+
+private extension View {
+    /// Wraps `.tabItem` + `.tag` so each tab in `PreferencesView.body` reads as one line
+    /// and the enum stays the single source of titles and SF Symbol names.
+    func preferencesTabItem(_ tab: PreferencesTab) -> some View {
+        self
+            .tabItem { Label(tab.title, systemImage: tab.symbolName) }
+            .tag(tab)
+    }
+}
+
+// MARK: - Tabs
+
+/// General: permissions and launch-at-login. Bootstrap that a first-time user hits
+/// before anything else, so it leads the tab order.
+private struct GeneralPreferencesTab: View {
+    @EnvironmentObject private var permissions: PermissionsManager
+    @EnvironmentObject private var launchAtLogin: LaunchAtLoginManager
+
+    var body: some View {
+        PreferencesTabContent {
+            PreferencesSection("Permissions", isFirst: true) {
+                permissionContent
             }
-            .padding(28)
-            .frame(maxWidth: .infinity, alignment: .leading)
-        }
-        .frame(width: 460, height: 600)
-    }
-
-    /// One titled settings group. Every section but the first is preceded by a
-    /// divider, so adding a setting is a single `section(_:)` call and the window
-    /// scrolls rather than stretching taller as more settings land here.
-    @ViewBuilder
-    private func section<Content: View>(
-        _ title: String,
-        isFirst: Bool = false,
-        @ViewBuilder content: () -> Content
-    ) -> some View {
-        if !isFirst {
-            Divider()
-        }
-        VStack(alignment: .leading, spacing: 12) {
-            Text(title)
-                .font(.title2)
-                .bold()
-            content()
-        }
-    }
-
-    private var startupSection: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            Toggle(
-                "Launch PieSwitcher at login",
-                isOn: Binding(
-                    get: { launchAtLogin.isEnabled },
-                    set: { launchAtLogin.setEnabled($0) }
-                )
-            )
-
-            Text("PieSwitcher starts automatically when you log in and runs in the menu bar.")
-                .font(.callout)
-                .foregroundStyle(.secondary)
-                .fixedSize(horizontal: false, vertical: true)
-        }
-    }
-
-    private var mouseSection: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            MouseActivationSettings()
-
-            Divider()
-
-            MouseInteractionMode()
-        }
-    }
-
-    private var keyboardSection: some View {
-        let combo = ModifierCombination(rawValue: keyboardModifiersRaw).intersection(.all)
-        return VStack(alignment: .leading, spacing: 12) {
-            // The keyboard shortcut: one held modifier combination, independent of the mouse's
-            // click combo. Bringr-93j.69 merged the former mouse + trackpad modifier pickers
-            // into this one, since the modifier hold is a global key event either way.
-            Text("Hold modifier keys")
-            ModifierKeysPicker(rawValue: $keyboardModifiersRaw)
-            ModifierHoldDelayPicker()
-
-            Text(combo.isEmpty
-                 ? "Pick one or more modifier keys to hold. Until then, the keyboard can't summon the wheel."
-                 : "Hold \(combo.names) to summon the wheel — no click or tap needed — then release to choose.")
-                .font(.callout)
-                .foregroundStyle(.secondary)
-                .fixedSize(horizontal: false, vertical: true)
-
-            Text("On a laptop without an external mouse, the keyboard shortcut is the only "
-                 + "way to summon the wheel.")
-                .font(.callout)
-                .foregroundStyle(.secondary)
-                .fixedSize(horizontal: false, vertical: true)
-
-            Divider()
-
-            KeyboardInteractionMode()
-        }
-    }
-
-    private var revealSection: some View {
-        RevealSettings()
-    }
-
-    private var collectionSection: some View {
-        CollectionSettings()
-    }
-
-    private var myAppsSection: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            MyAppsEditor()
-
-            VStack(alignment: .leading, spacing: 8) {
-                Toggle("Show all other running apps", isOn: $showsOtherRunningApps)
-
-                Text("When on, every other app with a window on the current screen follows your "
-                     + "pinned apps. When off, the wheel shows only your pinned apps.")
-                    .font(.callout)
-                    .foregroundStyle(.secondary)
-                    .fixedSize(horizontal: false, vertical: true)
+            PreferencesSection("Startup") {
+                startupContent
             }
         }
     }
 
-    private var permissionSection: some View {
+    private var permissionContent: some View {
         VStack(alignment: .leading, spacing: 12) {
             HStack(spacing: 10) {
                 Image(systemName: permissions.status.symbolName)
@@ -168,183 +132,180 @@ struct PreferencesView: View {
             .padding(.top, 4)
         }
     }
+
+    private var startupContent: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Toggle(
+                "Launch PieSwitcher at login",
+                isOn: Binding(
+                    get: { launchAtLogin.isEnabled },
+                    set: { launchAtLogin.setEnabled($0) }
+                )
+            )
+
+            Text("PieSwitcher starts automatically when you log in and runs in the menu bar.")
+                .font(.callout)
+                .foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+    }
 }
 
-/// The mouse's interaction-mode picker (US-009 / Bringr-93j.91). Separate from the
-/// keyboard's picker so each input source carries its own preference; both keys are
-/// read fresh at each summon by `RadialMenuController`, so a change here applies on
-/// the next open without a relaunch.
-private struct MouseInteractionMode: View {
-    @AppStorage(InteractionMode.mouseDefaultsKey)
-    private var modeRaw = InteractionMode.defaultForMouse.rawValue
-
+/// Activation: mouse + keyboard summon paths and their interaction modes. Everything
+/// that decides HOW you open the wheel sits here in one place.
+private struct ActivationPreferencesTab: View {
     var body: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            Picker("When summoned:", selection: $modeRaw) {
-                ForEach(InteractionMode.allCases, id: \.rawValue) { mode in
-                    Text(mode.displayName).tag(mode.rawValue)
+        PreferencesTabContent {
+            PreferencesSection("Mouse", isFirst: true) {
+                VStack(alignment: .leading, spacing: 12) {
+                    MouseActivationSettings()
+                    Divider()
+                    MouseInteractionMode()
                 }
             }
-            .pickerStyle(.radioGroup)
-
-            Text(modeHelp)
-                .font(.callout)
-                .foregroundStyle(.secondary)
-                .fixedSize(horizontal: false, vertical: true)
-        }
-    }
-
-    private var modeHelp: String {
-        switch InteractionMode(rawValue: modeRaw) ?? .defaultForMouse {
-        case .holdToSelect:
-            return "Hold the chord, glide to a slice, release to choose; release on the centre to cancel."
-        case .clickToStay:
-            return "The wheel stays open after release. Click a slice to choose it, or the centre to cancel."
-        }
-    }
-}
-
-/// The keyboard's interaction-mode picker (Bringr-93j.91). Same shape as the mouse
-/// picker but reads its own persisted key and renders `clickToStay` as "Press" —
-/// you don't really "click" a keyboard.
-private struct KeyboardInteractionMode: View {
-    @AppStorage(InteractionMode.keyboardDefaultsKey)
-    private var modeRaw = InteractionMode.defaultForKeyboard.rawValue
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            Picker("When summoned:", selection: $modeRaw) {
-                ForEach(InteractionMode.allCases, id: \.rawValue) { mode in
-                    Text(mode.keyboardDisplayName).tag(mode.rawValue)
-                }
+            PreferencesSection("Keyboard") {
+                KeyboardActivationSettings()
             }
-            .pickerStyle(.radioGroup)
-
-            Text(modeHelp)
-                .font(.callout)
-                .foregroundStyle(.secondary)
-                .fixedSize(horizontal: false, vertical: true)
-
-            Text("Note: \"Press\" still has to last at least the Hold delay above before the wheel "
-                 + "opens, so that value also sets how long you must hold the keys to trigger a press.")
-                .font(.callout)
-                .foregroundStyle(.secondary)
-                .fixedSize(horizontal: false, vertical: true)
-        }
-    }
-
-    private var modeHelp: String {
-        switch InteractionMode(rawValue: modeRaw) ?? .defaultForKeyboard {
-        case .holdToSelect:
-            return "Keep holding the modifier keys, move the cursor to a slice, then release to choose."
-        case .clickToStay:
-            return "Tap the modifier keys to open the wheel; it stays open. Click a slice to choose, "
-                 + "or the centre to cancel."
         }
     }
 }
 
-/// The reveal-strategy picker (US-013) and the optional "leave only my selection on
-/// screen" toggle (Bringr-93j.27), grouped in their own view so the Preferences body
-/// stays within its length budget. Both keys are read fresh at each summon by
-/// `RadialMenuController`, so a change here applies on the next open without a relaunch.
-///
-/// The "leave only my selection on screen" toggle is gated to the `.raiseToFront`
-/// strategy (Bringr-93j.89): `.hideOthers` already hides everything else at hover
-/// time, so the post-commit hide is redundant and the checkbox would be meaningless.
-private struct RevealSettings: View {
-    @AppStorage(RevealStrategy.defaultsKey) private var revealStrategyRaw = RevealStrategy.default.rawValue
-    @AppStorage(HideOnCommit.defaultsKey) private var hideOnCommit = HideOnCommit.default
+/// Wheel: behaviour of the wheel once it's open — the reveal strategy and its
+/// "leave only my selection on screen" follow-up.
+private struct WheelPreferencesTab: View {
+    var body: some View {
+        PreferencesTabContent {
+            PreferencesSection("Reveal", isFirst: true) {
+                RevealSettings()
+            }
+        }
+    }
+}
+
+/// Appearance: visual settings (size, opacity, glass, labels, shadows). One section,
+/// since `AppearanceSettings` already carries its own internal grouping.
+private struct AppearancePreferencesTab: View {
+    var body: some View {
+        PreferencesTabContent {
+            AppearanceSettings()
+        }
+    }
+}
+
+/// My Apps: the curated list, the "show other running apps" follow-up, the excluded
+/// apps list, and how the apps ring is ordered. Everything that decides WHICH apps
+/// appear and in what order.
+private struct MyAppsPreferencesTab: View {
+    @AppStorage(CuratedApps.showOtherRunningAppsDefaultsKey)
+    private var showsOtherRunningApps = CuratedApps.showOtherRunningAppsDefault
 
     var body: some View {
-        let strategy = RevealStrategy(rawValue: revealStrategyRaw) ?? .default
-        return VStack(alignment: .leading, spacing: 16) {
-            VStack(alignment: .leading, spacing: 8) {
-                Picker("Reveal mode", selection: $revealStrategyRaw) {
-                    ForEach(RevealStrategy.allCases, id: \.rawValue) { strategy in
-                        Text(strategy.displayName).tag(strategy.rawValue)
+        PreferencesTabContent {
+            PreferencesSection("My Apps", isFirst: true) {
+                VStack(alignment: .leading, spacing: 12) {
+                    MyAppsEditor()
+                    VStack(alignment: .leading, spacing: 8) {
+                        Toggle("Show all other running apps", isOn: $showsOtherRunningApps)
+
+                        Text("When on, every other app with a window on the current screen follows your "
+                             + "pinned apps. When off, the wheel shows only your pinned apps.")
+                            .font(.callout)
+                            .foregroundStyle(.secondary)
+                            .fixedSize(horizontal: false, vertical: true)
                     }
                 }
-                .pickerStyle(.radioGroup)
-                .labelsHidden()
-
-                Text(strategy.detail)
-                    .font(.callout)
-                    .foregroundStyle(.secondary)
-                    .fixedSize(horizontal: false, vertical: true)
             }
-
-            if strategy == .raiseToFront {
-                VStack(alignment: .leading, spacing: 8) {
-                    Toggle("Leave only my selection on screen", isOn: $hideOnCommit)
-
-                    Text("After you choose, hide everything else so only your selection remains. "
-                         + "Picking a window minimizes its app's other windows and hides every other "
-                         + "app; picking an app leaves just its front window.")
-                        .font(.callout)
-                        .foregroundStyle(.secondary)
-                        .fixedSize(horizontal: false, vertical: true)
-                }
+            PreferencesSection("Excluded Apps") {
+                IgnoreListSettings()
+            }
+            PreferencesSection("Sorting") {
+                SortingSettings()
             }
         }
     }
 }
 
-/// A row of checkboxes for the five modifier keys, backed by a bitmask in `UserDefaults`
-/// so any combination round-trips through one `@AppStorage` value (Bringr-93j.35).
-private struct ModifierKeysPicker: View {
-    @Binding var rawValue: Int
-
+/// Collection: scope (screens, spaces), the include-minimized/hidden toggles, and the
+/// "include every Dock app" switch. Everything that decides WHICH windows fill the
+/// wheel.
+private struct CollectionPreferencesTab: View {
     var body: some View {
-        HStack(spacing: 14) {
-            ForEach(ModifierCombination.keys) { key in
-                Toggle(key.name, isOn: binding(for: key.modifier))
-                    .toggleStyle(.checkbox)
-            }
+        PreferencesTabContent {
+            CollectionSettings()
         }
-    }
-
-    private func binding(for modifier: ModifierCombination) -> Binding<Bool> {
-        Binding(
-            get: { ModifierCombination(rawValue: rawValue).contains(modifier) },
-            set: { isOn in
-                var combo = ModifierCombination(rawValue: rawValue).intersection(.all)
-                if isOn { combo.insert(modifier) } else { combo.remove(modifier) }
-                rawValue = combo.rawValue
-            }
-        )
     }
 }
 
-/// A slider plus a numeric field for the modifier hold delay (Bringr-93j.58). Lives in the
-/// Keyboard section (Bringr-93j.69 folded the former duplicate out of the old Mouse and
-/// Trackpad sections into this one). `ModifierHoldMonitor` reads the same key fresh on each
-/// hold, so a change applies on the next summon without a relaunch.
-private struct ModifierHoldDelayPicker: View {
-    @AppStorage(ActivationHoldDelay.defaultsKey)
-    private var delayMilliseconds = ActivationHoldDelay.defaultMilliseconds
+/// Navigation: keyboard control while the wheel is open and trackpad haptics. Both are
+/// about feedback and movement once the wheel is up, distinct from the Activation tab
+/// which is about getting the wheel up in the first place.
+private struct NavigationPreferencesTab: View {
+    var body: some View {
+        PreferencesTabContent {
+            PreferencesSection("Keyboard navigation", isFirst: true) {
+                KeyboardNavigationSettings()
+            }
+            PreferencesSection("Trackpad haptics") {
+                TrackpadHapticsSettings()
+            }
+        }
+    }
+}
+
+/// About: app name, version, repo link, and "Check for Updates…". Bringr-93j.97 folded
+/// the former standalone About window into this tab; the menu bar's "About PieSwitcher"
+/// item now writes `PreferencesTab.about` into `UserDefaults` before opening the
+/// Preferences window so it lands here.
+private struct AboutPreferencesTab: View {
+    var body: some View {
+        ScrollView {
+            AboutView()
+                .frame(maxWidth: .infinity)
+        }
+    }
+}
+
+// MARK: - Layout helpers
+
+/// One settings group inside a tab. A heading and (for sections after the first) a
+/// divider above it. Matches the pre-tabbed Preferences look so sections inside a
+/// multi-section tab stay visually consistent.
+private struct PreferencesSection<Content: View>: View {
+    let title: String
+    let isFirst: Bool
+    @ViewBuilder let content: () -> Content
+
+    init(_ title: String, isFirst: Bool = false, @ViewBuilder content: @escaping () -> Content) {
+        self.title = title
+        self.isFirst = isFirst
+        self.content = content
+    }
 
     var body: some View {
-        let value = Binding(
-            get: { delayMilliseconds },
-            set: { delayMilliseconds = ActivationHoldDelay.clampMilliseconds($0) }
-        )
-        return VStack(alignment: .leading, spacing: 6) {
-            HStack(spacing: 10) {
-                Text("Hold delay")
-                Slider(value: value, in: ActivationHoldDelay.millisecondRange)
-                TextField("", value: value, format: .number.precision(.fractionLength(0)))
-                    .frame(width: 52)
-                    .multilineTextAlignment(.trailing)
-                    .textFieldStyle(.roundedBorder)
-                Text("ms")
+        VStack(alignment: .leading, spacing: 12) {
+            if !isFirst {
+                Divider()
             }
+            Text(title)
+                .font(.title2)
+                .bold()
+            content()
+        }
+    }
+}
 
-            Text("Hold the keys at least this long before the wheel opens, so a quick tap "
-                 + "(like Fn to switch the input language) won't summon it.")
-                .font(.callout)
-                .foregroundStyle(.secondary)
-                .fixedSize(horizontal: false, vertical: true)
+/// Shared tab body: a padded scrollable VStack. Tabs vary in length so each gets its
+/// own ScrollView; sharing the padding here keeps the tabs feeling visually consistent.
+private struct PreferencesTabContent<Content: View>: View {
+    @ViewBuilder let content: () -> Content
+
+    var body: some View {
+        ScrollView {
+            VStack(alignment: .leading, spacing: 18) {
+                content()
+            }
+            .padding(28)
+            .frame(maxWidth: .infinity, alignment: .leading)
         }
     }
 }
