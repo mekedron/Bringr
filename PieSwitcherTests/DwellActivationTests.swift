@@ -20,6 +20,7 @@ final class DwellActivationTests: XCTestCase {
             DwellActivation.defaultDurationMilliseconds / 1000,
             accuracy: durationAccuracy
         )
+        XCTAssertEqual(config.duringDragOnly, DwellActivation.defaultDuringDragOnly)
     }
 
     func testIsEnabledReadsPersistedValue() {
@@ -92,15 +93,39 @@ final class DwellActivationTests: XCTestCase {
 
     // MARK: - Bundled config
 
-    /// The bundled `Config` the controller reads at summon must reflect both knobs at once.
-    func testCurrentBundlesBothKnobs() {
+    /// The bundled `Config` the controller reads at summon must reflect all three knobs at once.
+    func testCurrentBundlesAllKnobs() {
         let defaults = makeDefaults()
         defaults.set(false, forKey: DwellActivation.enabledDefaultsKey)
         defaults.set(4000.0, forKey: DwellActivation.durationDefaultsKey)
+        defaults.set(false, forKey: DwellActivation.duringDragOnlyDefaultsKey)
 
         let config = DwellActivation.current(from: defaults)
         XCTAssertFalse(config.enabled)
         XCTAssertEqual(config.duration, 4.0, accuracy: durationAccuracy)
+        XCTAssertFalse(config.duringDragOnly)
+    }
+
+    // MARK: - Drag-only gate persistence (Bringr-93j.107)
+
+    func testIsDuringDragOnlyReadsPersistedValue() {
+        let defaults = makeDefaults()
+        defaults.set(false, forKey: DwellActivation.duringDragOnlyDefaultsKey)
+        XCTAssertFalse(DwellActivation.isDuringDragOnly(from: defaults))
+
+        defaults.set(true, forKey: DwellActivation.duringDragOnlyDefaultsKey)
+        XCTAssertTrue(DwellActivation.isDuringDragOnly(from: defaults))
+    }
+
+    /// Same presence-check rationale as `isEnabled`: without it, `bool(forKey:)` returns
+    /// `false` for an absent key and would silently flip the default to OFF — re-enabling
+    /// always-on dwell against the documented Bringr-93j.107 default.
+    func testIsDuringDragOnlyFallsBackToDefaultWhenAbsent() {
+        let defaults = makeDefaults()
+        XCTAssertEqual(
+            DwellActivation.isDuringDragOnly(from: defaults),
+            DwellActivation.defaultDuringDragOnly
+        )
     }
 
     func testDefaultsLandWithinAdvertisedRange() {

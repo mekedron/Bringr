@@ -94,7 +94,7 @@ final class RadialMenuController: ObservableObject {
     /// managed by the `+Dwell` extension. The config is frozen at summon so a mid-open
     /// Preferences change can't half-flip the timer.
     var dwellTimer: Timer?
-    var dwellConfig: DwellActivation.Config = .init(enabled: false, duration: 0)
+    var dwellConfig: DwellActivation.Config = .init(enabled: false, duration: 0, duringDragOnly: false)
 
     /// macOS virtual key code for Esc.
     private static let escapeKeyCode: UInt16 = 53
