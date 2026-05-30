@@ -170,12 +170,14 @@ struct MouseActivationSettings: View {
         VStack(alignment: .leading, spacing: 8) {
             Toggle("Lock mouse-button action while holding", isOn: $lock)
 
-            Text("Stronger than the toggle above: while the activation button is held, ALL "
-                 + "of that button's events are dropped — the focused app never sees a "
-                 + "mouseDown or mouseUp from it, even if you release before the hold delay "
-                 + "elapses. Useful for Middle click, whose normal actions (close a tab, "
-                 + "open a link in a new tab) fire on mouseUp anyway — so locking the whole "
-                 + "click is essentially invisible in normal browsing.")
+            Text("Stronger than the toggle above: when the wheel opens (you held the "
+                 + "activation button past the hold delay), ALL of that button's events "
+                 + "are dropped — the focused app never sees a mouseDown or mouseUp from "
+                 + "it, so the wheel can't be followed by a ghost click. A short tap "
+                 + "(release before the delay elapses) still fires the button's normal "
+                 + "click as usual, because the wheel never opened. Useful for Middle "
+                 + "click, where this gives you tap-to-close-a-tab AND hold-to-summon on "
+                 + "the same button.")
                 .font(.callout)
                 .foregroundStyle(.secondary)
                 .fixedSize(horizontal: false, vertical: true)

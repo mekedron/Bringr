@@ -72,6 +72,17 @@ final class MouseChordMonitor {
     /// re-injected presses straight through instead of re-detecting them.
     static let replaySentinel: Int64 = 0x4252_4E47  // "BRNG"
 
+    /// Whether `event` is a mouse-up of any button. Used in the Lock + `.releaseHeldWithCurrent`
+    /// path to tell a tap (release before the hold-delay completed) apart from a
+    /// pursuit-breaking new press (Bringr-93j.104). `nonisolated` because it only inspects
+    /// the event's type — no actor state — so tests can call it without a MainActor hop.
+    nonisolated static func isReleaseEvent(_ event: CGEvent) -> Bool {
+        switch event.type {
+        case .leftMouseUp, .rightMouseUp, .otherMouseUp: return true
+        default: return false
+        }
+    }
+
     init(
         pursuitTimeout: TimeInterval = 0.12,
         methodsProvider: @escaping () -> Set<MouseActivationMethod> = { MouseActivationConfig.methods() },
@@ -289,7 +300,15 @@ final class MouseChordMonitor {
         case .releaseHeldWithCurrent:
             cancelHoldDelayTimer()
             pendingMatch = nil
-            if lock {
+            // Tap-vs-hold (Bringr-93j.104): `.releaseHeldWithCurrent` fires either when a
+            // pursuit's last button is released BEFORE the hold delay completes (the user
+            // tapped) or when a new button breaks the pursuit. With Lock ON, the original
+            // behaviour was to drop both cases — which made a short tap of an activation
+            // button do nothing at all, the bug .104 calls out. So: a release event falls
+            // through to the replay path (tap = normal click fires); a non-release event
+            // (a different button broke the pursuit) keeps the original Lock semantics
+            // and drops the buffered activation events.
+            if lock && !Self.isReleaseEvent(event) {
                 heldEvents.removeAll()
                 pressLocation = nil
                 return nil
