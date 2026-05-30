@@ -206,7 +206,8 @@ struct RadialRingContent: View {
                     node: node,
                     index: index,
                     showsLabels: showsLabels,
-                    shadowOpacity: shadowOpacity
+                    shadowOpacity: shadowOpacity,
+                    maxLabelWidth: ring.layout.sliceLabelMaxWidth(at: index)
                 )
                 .offset(
                     x: ring.layout.sliceCenterOffset(at: index).x,
@@ -276,6 +277,12 @@ struct RadialSliceLabel: View {
     /// Opacity of the shadow behind the icon and text (Bringr-93j.66), so the user can
     /// strengthen it for legibility on busy backgrounds or remove it entirely.
     let shadowOpacity: Double
+    /// Horizontal cap on the label box, derived from the slice's chord at the mid-ring
+    /// (`RadialLayout.sliceLabelMaxWidth`), so single-line text truncates with a
+    /// trailing ellipsis once it would overflow into a neighbouring slice
+    /// (Bringr-93j.92) instead of being clipped by the fixed 84pt cap that didn't
+    /// adapt to narrower rings (many apps, overflow compressed windows).
+    let maxLabelWidth: CGFloat
 
     var body: some View {
         VStack(spacing: 4) {
@@ -285,6 +292,7 @@ struct RadialSliceLabel: View {
                     Text(node.title)
                         .font(.caption.weight(.semibold))
                         .lineLimit(1)
+                        .truncationMode(.tail)
                         .foregroundStyle(.primary)
                 }
             } else {
@@ -295,11 +303,12 @@ struct RadialSliceLabel: View {
                     Text(node.title)
                         .font(.caption2.weight(.medium))
                         .lineLimit(1)
+                        .truncationMode(.tail)
                         .foregroundStyle(.primary)
                 }
             }
         }
-        .frame(maxWidth: 84)
+        .frame(maxWidth: maxLabelWidth)
         .shadow(color: .black.opacity(shadowOpacity), radius: 2, y: 0.5)
     }
 

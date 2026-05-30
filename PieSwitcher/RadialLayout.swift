@@ -94,6 +94,19 @@ struct RadialLayout: Equatable, Sendable {
         ringPoint(angle: centerAngle(ofSliceAt: index), radius: geometry.midRadius)
     }
 
+    /// Horizontal cap for a label centred on slice `index`: the chord across the
+    /// slice's angular span at the mid-ring radius — the width the label is allowed
+    /// before it would overflow into a neighbouring slice (Bringr-93j.92). A
+    /// single-line `Text` with this as its `frame(maxWidth:)` truncates with a
+    /// trailing ellipsis once it hits the cap, so labels stay inside their slice on
+    /// narrow rings (many apps, compressed overflow windows) instead of overflowing.
+    /// Slices wider than 180° clamp to the full midRadius diameter, so a single-slice
+    /// ring (the apps-vs-windows ratio fallback) doesn't fold to zero width past π.
+    func sliceLabelMaxWidth(at index: Int) -> CGFloat {
+        let effectiveSpan = min(span(ofSliceAt: index), CGFloat.pi)
+        return 2 * geometry.midRadius * sin(effectiveSpan / 2)
+    }
+
     /// The slice a cursor offset falls in, or `nil` for the dead zone, outside the
     /// ring, or an uncovered gap between arcs. `offset` is measured from the ring
     /// centre, +x right / +y down. Containment is modulo-2π so arcs may wrap past the

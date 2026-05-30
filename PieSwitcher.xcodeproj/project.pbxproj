@@ -98,6 +98,7 @@
 		1A00000000000000000000DB /* KeyboardNavigationTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1A00000000000000000000DC /* KeyboardNavigationTests.swift */; };
 		1A00000000000000000000DD /* RadialNavigatorKeyboardTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1A00000000000000000000DE /* RadialNavigatorKeyboardTests.swift */; };
 		1A00000000000000000000DF /* RadialNavigatorKeyboardFollowupTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1A00000000000000000000E0 /* RadialNavigatorKeyboardFollowupTests.swift */; };
+		1A00000000000000000000E3 /* RadialLayoutLabelWidthTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1A00000000000000000000E4 /* RadialLayoutLabelWidthTests.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -204,6 +205,7 @@
 		1A00000000000000000000DC /* KeyboardNavigationTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = KeyboardNavigationTests.swift; sourceTree = "<group>"; };
 		1A00000000000000000000DE /* RadialNavigatorKeyboardTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RadialNavigatorKeyboardTests.swift; sourceTree = "<group>"; };
 		1A00000000000000000000E0 /* RadialNavigatorKeyboardFollowupTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RadialNavigatorKeyboardFollowupTests.swift; sourceTree = "<group>"; };
+		1A00000000000000000000E4 /* RadialLayoutLabelWidthTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RadialLayoutLabelWidthTests.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -343,6 +345,7 @@
 				1A00000000000000000000DC /* KeyboardNavigationTests.swift */,
 				1A00000000000000000000DE /* RadialNavigatorKeyboardTests.swift */,
 				1A00000000000000000000E0 /* RadialNavigatorKeyboardFollowupTests.swift */,
+				1A00000000000000000000E4 /* RadialLayoutLabelWidthTests.swift */,
 			);
 			path = PieSwitcherTests;
 			sourceTree = "<group>";
@@ -543,6 +546,7 @@
 				1A00000000000000000000DB /* KeyboardNavigationTests.swift in Sources */,
 				1A00000000000000000000DD /* RadialNavigatorKeyboardTests.swift in Sources */,
 				1A00000000000000000000DF /* RadialNavigatorKeyboardFollowupTests.swift in Sources */,
+				1A00000000000000000000E3 /* RadialLayoutLabelWidthTests.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
