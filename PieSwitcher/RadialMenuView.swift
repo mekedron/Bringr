@@ -31,6 +31,7 @@ struct RadialMenuView: View {
             glass
             emphasis
             content
+            dwell
         }
         .frame(width: diameter, height: diameter)
         .contentShape(Rectangle())
@@ -84,6 +85,24 @@ struct RadialMenuView: View {
                 )
             }
         }
+    }
+
+    /// Layer 4 — the dwell-to-activate progress arc (Bringr-93j.105), drawn last so it
+    /// reads as a foreground cue on top of every other layer. Only the dwelt slice gets
+    /// an arc; every other slice draws nothing. The arc lives on the slice's own outer
+    /// border so the user sees the activation about to fire right where they're aiming,
+    /// parallel to the cursor-centred ring in Bringr-93j.103.
+    private var dwell: some View {
+        ZStack {
+            ForEach(controller.rings) { ring in
+                RadialRingDwellOverlay(
+                    ring: ring,
+                    dwellRegion: controller.dwellRegion,
+                    progress: controller.dwellProgress
+                )
+            }
+        }
+        .allowsHitTesting(false)
     }
 }
 

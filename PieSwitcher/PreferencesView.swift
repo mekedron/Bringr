@@ -245,6 +245,9 @@ private struct NavigationPreferencesTab: View {
             PreferencesSection("Keyboard navigation", isFirst: true) {
                 KeyboardNavigationSettings()
             }
+            PreferencesSection("Dwell") {
+                DwellActivationSettings()
+            }
             PreferencesSection("Trackpad haptics") {
                 TrackpadHapticsSettings()
             }

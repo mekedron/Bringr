@@ -32,6 +32,11 @@ final class RadialMenuController: ObservableObject {
     /// Whether the live highlight was last moved by keyboard vs mouse, for the focus tint
     /// (Bringr-93j.71). Set by the mouse hover path and the +Keyboard extension.
     @Published var highlightSource: HighlightSource = .mouse
+    /// Dwell-to-activate state (Bringr-93j.105): the slice the user is dwelling on and
+    /// the 0..1 fill of the progress arc on that slice's outer border. Driven by the
+    /// `+Dwell` extension; rendered by `RadialMenuView`. `.none`/0 when no dwell is armed.
+    @Published var dwellRegion: HoverRegion = .none
+    @Published var dwellProgress: Double = 0
 
     /// Overlay side length for the current base size, fit to every concentric ring
     /// at full depth.
@@ -64,6 +69,9 @@ final class RadialMenuController: ObservableObject {
     /// Reads the persisted apps/windows collection scope at summon time (Bringr-93j.48),
     /// mirroring `modeProvider`, so a Preferences change applies on the next summon.
     private let collectionProvider: () -> CollectionPreferences
+    /// Reads the persisted dwell-to-activate config at summon time (Bringr-93j.105),
+    /// mirroring `modeProvider`. Internal so the `+Dwell` extension and tests can reach it.
+    let dwellConfigProvider: () -> DwellActivation.Config
     /// Owns the optional trackpad-haptic-on-hover policy (Bringr-93j.44): resolves whether
     /// haptics fire for the summon (setting on + no external mouse) and taps as hover moves
     /// to a new slice. Resolved per summon like the other read-fresh settings.
@@ -82,6 +90,11 @@ final class RadialMenuController: ObservableObject {
     /// Windows-sub-wheel retry state (Bringr-93j.31): see `scheduleSubWheelRetry`.
     private var subWheelRetry: DispatchWorkItem?
     private var subWheelRetriesLeft = 0
+    /// Dwell-to-activate timer (Bringr-93j.105) and the frozen config it runs against;
+    /// managed by the `+Dwell` extension. The config is frozen at summon so a mid-open
+    /// Preferences change can't half-flip the timer.
+    var dwellTimer: Timer?
+    var dwellConfig: DwellActivation.Config = .init(enabled: false, duration: 0)
 
     /// macOS virtual key code for Esc.
     private static let escapeKeyCode: UInt16 = 53
@@ -95,6 +108,7 @@ final class RadialMenuController: ObservableObject {
         strategyProvider: @escaping () -> RevealStrategy = { RevealStrategy.current() },
         hideOnCommitProvider: @escaping () -> Bool = { HideOnCommit.isEnabled() },
         collectionProvider: @escaping () -> CollectionPreferences = { CollectionPreferences.current() },
+        dwellConfigProvider: @escaping () -> DwellActivation.Config = { DwellActivation.current() },
         monitorInstaller: EventMonitorInstaller = .live,
         haptics: HapticController? = nil
     ) {
@@ -104,6 +118,7 @@ final class RadialMenuController: ObservableObject {
         self.strategyProvider = strategyProvider
         self.hideOnCommitProvider = hideOnCommitProvider
         self.collectionProvider = collectionProvider
+        self.dwellConfigProvider = dwellConfigProvider
         self.monitorInstaller = monitorInstaller
         self.haptics = haptics ?? HapticController()
         self.navigator = RadialNavigator(
@@ -218,6 +233,9 @@ final class RadialMenuController: ObservableObject {
         // Resolve the optional keyboard-navigation settings for this summon (Bringr-93j.71), like
         // the other read-fresh settings; the live tap then consults `acceptsKeyboardNav`.
         keyboardConfig = KeyboardNavigationConfig.current()
+        // Resolve dwell config once per summon (Bringr-93j.105), like the other read-fresh
+        // settings, so the per-hover dwell logic reads frozen state.
+        dwellConfig = dwellConfigProvider()
         highlightSource = .mouse
         navigator.open(appNodes: root.resolvedChildren())
         syncFromNavigator()
@@ -267,6 +285,8 @@ final class RadialMenuController: ObservableObject {
         rings = navigator.rings
         hovered = navigator.hovered
         prehighlighted = navigator.prehighlighted
+        // Dwell rides every hover change (mouse hover, keyboard nav) — Bringr-93j.105.
+        applyDwell(for: navigator.hovered)
     }
 
     // MARK: - While-open monitors (hover + cancel paths)
@@ -321,6 +341,9 @@ final class RadialMenuController: ObservableObject {
     private func stopMenuMonitors() {
         subWheelRetry?.cancel()
         subWheelRetry = nil
+        // Dwell rides the wheel — stop the timer so a stale fire can't commit into a
+        // closed wheel (Bringr-93j.105).
+        cancelDwell()
         for monitor in eventMonitors { monitorInstaller.remove(monitor) }
         eventMonitors.removeAll()
         if let spaceObserver {
