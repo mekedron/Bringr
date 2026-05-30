@@ -18,11 +18,6 @@ struct MyAppsEditor: View {
         VStack(alignment: .leading, spacing: 8) {
             listBox
             controls
-            Text("Pinned apps lead the wheel in this order. Drag app bundles from Finder "
-                 + "or the Dock onto the list, or use the + button.")
-                .font(.callout)
-                .foregroundStyle(.secondary)
-                .fixedSize(horizontal: false, vertical: true)
         }
     }
 

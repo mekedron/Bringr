@@ -75,6 +75,7 @@
 		1A000000000000000000010D /* DwellActivationSettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1A000000000000000000010E /* DwellActivationSettingsView.swift */; };
 		1A000000000000000000010F /* DwellActivationTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1A0000000000000000000110 /* DwellActivationTests.swift */; };
 		1A0000000000000000000111 /* RadialDwellOverlay.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1A0000000000000000000112 /* RadialDwellOverlay.swift */; };
+		1A0000000000000000000113 /* PreferencesLayout.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1A0000000000000000000114 /* PreferencesLayout.swift */; };
 		1A0000000000000000000092 /* DockIconManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1A0000000000000000000091 /* DockIconManager.swift */; };
 		1A0000000000000000000094 /* DockIconManagerTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1A0000000000000000000093 /* DockIconManagerTests.swift */; };
 		1A00000000000000000000E2 /* RadialNavigatorSkipLevelTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1A00000000000000000000E1 /* RadialNavigatorSkipLevelTests.swift */; };
@@ -239,6 +240,7 @@
 		1A000000000000000000010E /* DwellActivationSettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DwellActivationSettingsView.swift; sourceTree = "<group>"; };
 		1A0000000000000000000110 /* DwellActivationTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DwellActivationTests.swift; sourceTree = "<group>"; };
 		1A0000000000000000000112 /* RadialDwellOverlay.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RadialDwellOverlay.swift; sourceTree = "<group>"; };
+		1A0000000000000000000114 /* PreferencesLayout.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PreferencesLayout.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -345,6 +347,7 @@
 				1A000000000000000000010C /* RadialMenuController+Dwell.swift */,
 				1A000000000000000000010E /* DwellActivationSettingsView.swift */,
 				1A0000000000000000000112 /* RadialDwellOverlay.swift */,
+				1A0000000000000000000114 /* PreferencesLayout.swift */,
 			);
 			path = PieSwitcher;
 			sourceTree = "<group>";
@@ -568,6 +571,7 @@
 				1A000000000000000000010B /* RadialMenuController+Dwell.swift in Sources */,
 				1A000000000000000000010D /* DwellActivationSettingsView.swift in Sources */,
 				1A0000000000000000000111 /* RadialDwellOverlay.swift in Sources */,
+				1A0000000000000000000113 /* PreferencesLayout.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

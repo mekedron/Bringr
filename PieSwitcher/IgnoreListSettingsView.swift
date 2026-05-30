@@ -2,32 +2,23 @@ import AppKit
 import SwiftUI
 import UniformTypeIdentifiers
 
-/// The "Excluded Apps" Preferences group (Bringr-93j.59): the ignore list of apps that must
-/// never appear in the wheel. A free-text field holds the comma-separated entries (each a
-/// bundle id or an app name), and an Add menu appends either a currently-running app (picked by
-/// name) or any installed app (via the Open panel) as its bundle id. Its own file and
-/// `@AppStorage` so the `PreferencesView` body stays within its length budget, mirroring
-/// `CollectionSettings` / `MyAppsEditor`. The same key is read fresh at each summon via
-/// `AppIgnoreList.current`, so an edit applies on the next open without a relaunch.
+/// The "Excluded Apps" settings group (Bringr-93j.59): a free-text field for the
+/// comma-separated ignore list and an Add menu for picking a running or installed
+/// app. The Apps tab's "Excluded" sub-tab (Bringr-93j.106) wraps this view in a
+/// `PreferencesPane` Section so the heading and footer styling match the rest of
+/// the window. The same key is read fresh at each summon via `AppIgnoreList.current`,
+/// so an edit applies on the next open without a relaunch.
 struct IgnoreListSettings: View {
     @AppStorage(AppIgnoreList.defaultsKey) private var text = ""
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            HStack(alignment: .top, spacing: 8) {
-                TextField("com.apple.Safari, Dell Display Manager", text: $text, axis: .vertical)
-                    .lineLimit(2...4)
-                    .textFieldStyle(.roundedBorder)
+        HStack(alignment: .top, spacing: 8) {
+            TextField("", text: $text, prompt: Text("com.apple.Safari, Dell Display Manager"), axis: .vertical)
+                .lineLimit(2...4)
+                .textFieldStyle(.roundedBorder)
+                .labelsHidden()
 
-                addMenu
-            }
-
-            Text("Apps listed here never appear in the wheel, even if they have open windows. "
-                 + "Separate entries with commas — each a bundle identifier (com.apple.Safari) "
-                 + "or an app name (Safari). Use Add to pick a running or installed app.")
-                .font(.callout)
-                .foregroundStyle(.secondary)
-                .fixedSize(horizontal: false, vertical: true)
+            addMenu
         }
     }
 

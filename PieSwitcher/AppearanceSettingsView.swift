@@ -1,13 +1,13 @@
 import SwiftUI
 
-/// The "Appearance" Preferences group (US-014): the wheel's size, how far it sits from
-/// the summon point, the slice fill opacity, the glass and content shadow opacities
-/// (Bringr-93j.66), label visibility, and the Liquid Glass toggle (Bringr-93j.65). Its
-/// own file (and own `@AppStorage` for the keys) so the `PreferencesView` body stays
-/// within its length budget, mirroring `SortingSettings`. The same keys are read fresh
-/// by `RadialAppearance.current` at each summon, so a change here applies on the next
-/// open without a relaunch (AC2). Every slider also has a numeric field for typing an
-/// exact value (Bringr-93j.66); both drive the one key, so they stay in sync.
+/// The "Appearance" Preferences pane (US-014): the wheel's size, distance from the
+/// summon point, slice fill opacity, glass and content shadows (Bringr-93j.66), label
+/// visibility, the Liquid Glass toggle (Bringr-93j.65), and the skip-single-window
+/// shortcut. Bringr-93j.106 reorganised this into a `PreferencesPane`-backed `Form`
+/// with three sections so the controls align in a clean two-column layout (label on
+/// the right, slider/toggle on the left), matching Logic Pro's Preferences screens.
+/// Every key is read fresh by `RadialAppearance.current` at each summon, so a change
+/// applies on the next open without a relaunch.
 struct AppearanceSettings: View {
     @AppStorage(RadialAppearance.radiusDefaultsKey)
     private var outerRadius = Double(RadialAppearance.defaultOuterRadius)
@@ -27,126 +27,84 @@ struct AppearanceSettings: View {
     private var skipSingleWindowLevel = RadialAppearance.defaultSkipSingleWindowLevel
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 14) {
-            LabeledSlider(
-                title: "Size",
-                value: $outerRadius,
-                range: doubleRange(RadialAppearance.radiusRange),
-                unit: .points
-            )
+        PreferencesPane {
+            Section("Size") {
+                PreferencesSliderRow(
+                    title: "Wheel size",
+                    value: $outerRadius,
+                    range: doubleRange(RadialAppearance.radiusRange),
+                    unit: "pt"
+                )
 
-            LabeledSlider(
-                title: "Distance from center",
-                value: $innerRadiusPadding,
-                range: doubleRange(RadialAppearance.innerPaddingRange),
-                unit: .points,
-                note: "Pushes the whole wheel out from where it opens. "
-                    + "Larger slices are easier to aim at."
-            )
+                PreferencesSliderRow(
+                    title: "Distance from center",
+                    value: $innerRadiusPadding,
+                    range: doubleRange(RadialAppearance.innerPaddingRange),
+                    unit: "pt"
+                )
+            }
 
-            LabeledSlider(
-                title: "Slice fill opacity",
-                value: $fillOpacity,
-                range: RadialAppearance.opacityRange,
-                unit: .percent
-            )
+            Section {
+                PreferencesSliderRow(
+                    title: "Slice fill opacity",
+                    value: percentBinding($fillOpacity),
+                    range: percentRange(RadialAppearance.opacityRange),
+                    unit: "%"
+                )
 
-            LabeledSlider(
-                title: "Glass shadow opacity",
-                value: $glassShadowOpacity,
-                range: RadialAppearance.shadowOpacityRange,
-                unit: .percent,
-                note: "Shadow the glass wheel casts on the desktop behind it."
-            )
+                PreferencesSliderRow(
+                    title: "Glass shadow",
+                    value: percentBinding($glassShadowOpacity),
+                    range: percentRange(RadialAppearance.shadowOpacityRange),
+                    unit: "%"
+                )
 
-            LabeledSlider(
-                title: "Text & icon shadow opacity",
-                value: $contentShadowOpacity,
-                range: RadialAppearance.shadowOpacityRange,
-                unit: .percent,
-                note: "Shadow behind slice icons and labels. Raise it for "
-                    + "legibility on busy backgrounds."
-            )
+                PreferencesSliderRow(
+                    title: "Text & icon shadow",
+                    value: percentBinding($contentShadowOpacity),
+                    range: percentRange(RadialAppearance.shadowOpacityRange),
+                    unit: "%"
+                )
+            } header: {
+                Text("Style")
+            } footer: {
+                Text("Slice fill is the colour layered on each wedge. Glass shadow falls "
+                     + "behind the wheel itself; text & icon shadow sits behind the slice "
+                     + "labels for legibility on busy backgrounds.")
+            }
 
-            Toggle("Show labels", isOn: $showsLabels)
-
-            VStack(alignment: .leading, spacing: 2) {
+            Section {
+                Toggle("Show labels", isOn: $showsLabels)
                 Toggle("Liquid Glass effect", isOn: $usesLiquidGlass)
-                Text("Render the wheel with the translucent Liquid Glass material (macOS 26 "
-                     + "and later). Turn it off for a plain frosted look.")
-                    .font(.callout)
-                    .foregroundStyle(.secondary)
-                    .fixedSize(horizontal: false, vertical: true)
-            }
-
-            VStack(alignment: .leading, spacing: 2) {
                 Toggle("Skip the windows ring for single-window apps", isOn: $skipSingleWindowLevel)
-                Text("When an app has just one window (or none), don't open a second ring — "
-                     + "choosing the app goes straight to its window. Apps with two or more "
-                     + "windows still open the ring.")
-                    .font(.callout)
-                    .foregroundStyle(.secondary)
-                    .fixedSize(horizontal: false, vertical: true)
+            } header: {
+                Text("Display")
+            } footer: {
+                Text("Liquid Glass renders the wheel with the macOS 26 translucent material; "
+                     + "turn it off for a plain frosted look. Skip the windows ring jumps "
+                     + "straight to a single-window app's window instead of opening a second "
+                     + "ring. Changes apply the next time you summon the wheel.")
             }
-
-            Text("Changes apply the next time you summon the wheel.")
-                .font(.callout)
-                .foregroundStyle(.secondary)
-                .fixedSize(horizontal: false, vertical: true)
         }
     }
 
-    /// Bridges the `CGFloat` slider bounds on `RadialAppearance` to the `Double` the
-    /// `@AppStorage`-backed sliders use, so the model stays the single source of the range.
+    /// Bridges the model's `CGFloat` slider bounds to the `Double` the `@AppStorage`
+    /// sliders use, so the model stays the single source of truth for the range.
     private func doubleRange(_ range: ClosedRange<CGFloat>) -> ClosedRange<Double> {
         Double(range.lowerBound)...Double(range.upperBound)
     }
-}
 
-/// One appearance control: a label, a slider, and a numeric field that edit the same
-/// value, so the user can either drag or type an exact number (Bringr-93j.66). `unit`
-/// decides how the field reads and writes — `.points` shows the raw point value,
-/// `.percent` shows a 0–100 percentage backed by a 0–1 stored opacity (so the bead's
-/// "0% to 100%" reads naturally). Both the slider and the typed field clamp into `range`,
-/// mirroring the model's own clamp, so the UI can never persist an out-of-range value.
-private struct LabeledSlider: View {
-    enum Unit { case points, percent }
-
-    let title: String
-    @Binding var value: Double
-    let range: ClosedRange<Double>
-    let unit: Unit
-    var note: String?
-
-    var body: some View {
-        let clamped = Binding(
-            get: { value },
-            set: { value = min(max($0, range.lowerBound), range.upperBound) }
+    /// Two-way mapping between a stored 0–1 opacity and a 0–100 percentage shown in
+    /// the slider/numeric field, so the row reads as "55%" without changing how the
+    /// value is persisted.
+    private func percentBinding(_ stored: Binding<Double>) -> Binding<Double> {
+        Binding(
+            get: { (stored.wrappedValue * 100).rounded() },
+            set: { stored.wrappedValue = max(0, min(1, $0 / 100)) }
         )
-        let field = Binding<Double>(
-            get: { (unit == .percent ? value * 100 : value).rounded() },
-            set: { typed in
-                let stored = unit == .percent ? typed / 100 : typed
-                value = min(max(stored, range.lowerBound), range.upperBound)
-            }
-        )
-        return VStack(alignment: .leading, spacing: 6) {
-            Text(title)
-            HStack(spacing: 10) {
-                Slider(value: clamped, in: range)
-                TextField("", value: field, format: .number.precision(.fractionLength(0)))
-                    .frame(width: 52)
-                    .multilineTextAlignment(.trailing)
-                    .textFieldStyle(.roundedBorder)
-                Text(unit == .percent ? "%" : "pt")
-                    .foregroundStyle(.secondary)
-            }
-            if let note {
-                Text(note)
-                    .font(.callout)
-                    .foregroundStyle(.secondary)
-                    .fixedSize(horizontal: false, vertical: true)
-            }
-        }
+    }
+
+    private func percentRange(_ range: ClosedRange<Double>) -> ClosedRange<Double> {
+        (range.lowerBound * 100)...(range.upperBound * 100)
     }
 }
